@@ -1,0 +1,10 @@
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="300" fill="#f8e9d6"/>
+  <rect x="50" y="100" width="300" height="150" fill="#d9a066" rx="10" ry="10"/>
+  <rect x="80" y="120" width="240" height="100" fill="#e8c496" rx="5" ry="5"/>
+  <line x1="50" y1="250" x2="350" y2="250" stroke="#8b5a2b" stroke-width="4"/>
+  <circle cx="100" cy="270" r="10" fill="#8b5a2b"/>
+  <circle cx="300" cy="270" r="10" fill="#8b5a2b"/>
+  <text x="200" y="170" font-family="Arial" font-size="16" text-anchor="middle" fill="#5d4037">Mid-Century Modern</text>
+  <path d="M150,50 L250,50 L230,100 L170,100 Z" fill="#e57373"/>
+</svg>

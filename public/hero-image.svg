@@ -1,0 +1,80 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="roomGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f3f4f6" />
+      <stop offset="100%" stop-color="#e5e7eb" />
+    </linearGradient>
+    <linearGradient id="floorGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d1d5db" />
+      <stop offset="50%" stop-color="#e5e7eb" />
+      <stop offset="100%" stop-color="#d1d5db" />
+    </linearGradient>
+    <linearGradient id="modernGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Room container - left side (before) -->
+  <g transform="translate(50, 50)">
+    <!-- Room walls -->
+    <rect x="0" y="0" width="300" height="500" fill="url(#roomGradient)" rx="5" />
+    
+    <!-- Floor -->
+    <rect x="0" y="400" width="300" height="100" fill="url(#floorGradient)" />
+    
+    <!-- Window -->
+    <rect x="30" y="50" width="100" height="150" fill="#93c5fd" stroke="#d1d5db" stroke-width="5" />
+    <line x1="80" y1="50" x2="80" y2="200" stroke="#d1d5db" stroke-width="5" />
+    <line x1="30" y1="125" x2="130" y2="125" stroke="#d1d5db" stroke-width="5" />
+    
+    <!-- Basic furniture -->
+    <rect x="170" y="50" width="100" height="150" fill="#d1d5db" rx="5" />
+    <rect x="50" y="300" width="200" height="80" fill="#9ca3af" rx="5" />
+    <rect x="100" y="250" width="100" height="30" fill="#9ca3af" rx="3" />
+    
+    <!-- Label -->
+    <rect x="10" y="460" width="80" height="30" fill="#4b5563" rx="5" />
+    <text x="25" y="480" font-family="Arial" font-size="14" fill="white">BEFORE</text>
+  </g>
+  
+  <!-- Room container - right side (after) -->
+  <g transform="translate(400, 50)">
+    <!-- Room walls -->
+    <rect x="0" y="0" width="300" height="500" fill="#f9fafb" rx="5" />
+    
+    <!-- Floor -->
+    <rect x="0" y="400" width="300" height="100" fill="#e5e7eb" />
+    
+    <!-- Window -->
+    <rect x="30" y="50" width="100" height="150" fill="#bfdbfe" stroke="#e5e7eb" stroke-width="5" />
+    <line x1="80" y1="50" x2="80" y2="200" stroke="#e5e7eb" stroke-width="5" />
+    <line x1="30" y1="125" x2="130" y2="125" stroke="#e5e7eb" stroke-width="5" />
+    
+    <!-- Modern furniture -->
+    <rect x="170" y="50" width="100" height="150" fill="url(#modernGradient)" rx="10" />
+    <rect x="50" y="300" width="200" height="80" fill="#8b5cf6" rx="10" />
+    <rect x="100" y="250" width="100" height="30" fill="#a78bfa" rx="5" />
+    
+    <!-- Decorative elements -->
+    <circle cx="220" cy="100" r="20" fill="#a78bfa" />
+    <circle cx="220" cy="150" r="15" fill="#c4b5fd" />
+    <rect x="60" y="320" width="180" height="5" fill="white" rx="2" />
+    <rect x="60" y="340" width="140" height="5" fill="white" rx="2" />
+    <rect x="60" y="360" width="160" height="5" fill="white" rx="2" />
+    
+    <!-- Label -->
+    <rect x="210" y="460" width="80" height="30" fill="#8b5cf6" rx="5" />
+    <text x="230" y="480" font-family="Arial" font-size="14" fill="white">AFTER</text>
+  </g>
+  
+  <!-- Divider -->
+  <line x1="375" y1="50" x2="375" y2="550" stroke="#d1d5db" stroke-width="2" stroke-dasharray="10,5" />
+  
+  <!-- AI Magic text -->
+  <g transform="translate(350, 25)">
+    <rect x="0" y="0" width="100" height="30" fill="#8b5cf6" rx="15" />
+    <text x="15" y="20" font-family="Arial" font-size="14" font-weight="bold" fill="white">AI MAGIC</text>
+  </g>
+</svg>

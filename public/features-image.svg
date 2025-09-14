@@ -1,0 +1,85 @@
+<svg width="800" height="300" viewBox="0 0 800 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <defs>
+    <linearGradient id="cardGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f9fafb" />
+      <stop offset="100%" stop-color="#f3f4f6" />
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Feature Card 1: Room Types -->
+  <g transform="translate(50, 50)">
+    <!-- Card background -->
+    <rect x="0" y="0" width="200" height="200" fill="url(#cardGradient)" rx="10" filter="drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.1))" />
+    
+    <!-- Icon background -->
+    <circle cx="100" cy="70" r="40" fill="url(#accentGradient)" />
+    
+    <!-- House icon -->
+    <path d="M80,70 L80,90 L120,90 L120,70 L100,50 Z" fill="white" />
+    <rect x="90" y="75" width="20" height="15" fill="url(#accentGradient)" />
+    
+    <!-- Text -->
+    <text x="100" y="130" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">Multiple Room</text>
+    <text x="100" y="150" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">Types</text>
+    
+    <!-- Feature list -->
+    <circle cx="70" cy="170" r="3" fill="#8b5cf6" />
+    <text x="80" y="175" font-family="Arial" font-size="12" fill="#4b5563">Living Room</text>
+    
+    <circle cx="70" cy="185" r="3" fill="#8b5cf6" />
+    <text x="80" y="190" font-family="Arial" font-size="12" fill="#4b5563">Bedroom</text>
+  </g>
+  
+  <!-- Feature Card 2: Design Styles -->
+  <g transform="translate(300, 50)">
+    <!-- Card background -->
+    <rect x="0" y="0" width="200" height="200" fill="url(#cardGradient)" rx="10" filter="drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.1))" />
+    
+    <!-- Icon background -->
+    <circle cx="100" cy="70" r="40" fill="url(#accentGradient)" />
+    
+    <!-- Palette icon -->
+    <circle cx="85" cy="60" r="10" fill="white" />
+    <circle cx="110" cy="60" r="10" fill="white" opacity="0.8" />
+    <circle cx="97" cy="85" r="10" fill="white" opacity="0.6" />
+    
+    <!-- Text -->
+    <text x="100" y="130" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">Various Design</text>
+    <text x="100" y="150" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">Styles</text>
+    
+    <!-- Feature list -->
+    <circle cx="70" cy="170" r="3" fill="#8b5cf6" />
+    <text x="80" y="175" font-family="Arial" font-size="12" fill="#4b5563">Modern</text>
+    
+    <circle cx="70" cy="185" r="3" fill="#8b5cf6" />
+    <text x="80" y="190" font-family="Arial" font-size="12" fill="#4b5563">Minimalist</text>
+  </g>
+  
+  <!-- Feature Card 3: Instant Results -->
+  <g transform="translate(550, 50)">
+    <!-- Card background -->
+    <rect x="0" y="0" width="200" height="200" fill="url(#cardGradient)" rx="10" filter="drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.1))" />
+    
+    <!-- Icon background -->
+    <circle cx="100" cy="70" r="40" fill="url(#accentGradient)" />
+    
+    <!-- Lightning icon -->
+    <path d="M100,45 L85,75 L100,75 L95,95 L115,65 L100,65 Z" fill="white" />
+    
+    <!-- Text -->
+    <text x="100" y="130" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">Instant</text>
+    <text x="100" y="150" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">Results</text>
+    
+    <!-- Feature list -->
+    <circle cx="70" cy="170" r="3" fill="#8b5cf6" />
+    <text x="80" y="175" font-family="Arial" font-size="12" fill="#4b5563">AI-Powered</text>
+    
+    <circle cx="70" cy="185" r="3" fill="#8b5cf6" />
+    <text x="80" y="190" font-family="Arial" font-size="12" fill="#4b5563">High Quality</text>
+  </g>
+</svg>
