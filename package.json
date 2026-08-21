@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.31.3",
@@ -35,6 +36,7 @@
     "drizzle-kit": "^0.31.4",
     "tailwindcss": "^4",
     "tsx": "^4.20.4",
-    "tw-animate-css": "^1.3.7"
+    "tw-animate-css": "^1.3.7",
+    "vitest": "^2.1.9"
   }
 }
