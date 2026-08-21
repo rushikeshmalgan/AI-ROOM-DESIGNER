@@ -1,24 +1,29 @@
-// Replicate API configuration
 import Replicate from 'replicate';
 
-// Initialize Replicate client with API token from environment variables
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-// Room redesign model - using Stable Diffusion XL for interior design
-const ROOM_REDESIGN_MODEL = 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b';
+const ROOM_REDESIGN_MODEL = 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea53525255b1aa35c5565e08b';
 
-// Function to generate room design based on input image and parameters
+export interface GenerateRoomDesignInput {
+  imageUrl: string;
+  roomType: string;
+  designStyle: string;
+  additionalRequirements?: string | null;
+}
+
 export async function generateRoomDesign({
   imageUrl,
   roomType,
   designStyle,
   additionalRequirements,
-}) {
+}: GenerateRoomDesignInput): Promise<string[]> {
   try {
     const prompt = `A professional interior design for a ${roomType} in ${designStyle} style. ${additionalRequirements || ''}`;
-    
+
+    // Replicate SDK types run() return as Promise<object> — the SDXL
+    // image-to-image output is a string[] of generated image URLs.
     const output = await replicate.run(
       ROOM_REDESIGN_MODEL,
       {
@@ -29,12 +34,12 @@ export async function generateRoomDesign({
           num_outputs: 1,
           guidance_scale: 7.5,
           num_inference_steps: 50,
-          strength: 0.8, // Balance between original image and generated content
+          strength: 0.8,
         }
       }
     );
-    
-    return output;
+
+    return output as unknown as string[];
   } catch (error) {
     console.error('Error generating room design:', error);
     throw error;

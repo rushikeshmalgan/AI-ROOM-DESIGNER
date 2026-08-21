@@ -37,7 +37,7 @@ export default function Home() {
               </Link>
               
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="outline" className="border-purple-300 text-purple-700 dark:text-purple-300 px-8 py-6 text-lg rounded-xl">
+                <Button href="#features" variant="outline" className="border-purple-300 text-purple-700 dark:text-purple-300 px-8 py-6 text-lg rounded-xl">
                   View Examples
                 </Button>
               </motion.div>
@@ -72,7 +72,7 @@ export default function Home() {
       </div>
       
       {/* Features Section */}
-      <div className="bg-white dark:bg-gray-900 py-20">
+      <div id="features" className="bg-white dark:bg-gray-900 py-20">
         <div className="container mx-auto px-4">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}

@@ -2,10 +2,28 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs } from '@/config/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 
-// Popular design styles that are trending
-const TRENDING_STYLES = [
+interface TrendingStyle {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+}
+
+interface DesignCategory {
+  [roomType: string]: string[];
+}
+
+interface Recommendation {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  isPersonalized?: boolean;
+}
+
+const TRENDING_STYLES: TrendingStyle[] = [
   { id: 'trend-1', name: 'Scandinavian', description: 'Clean lines and minimalist approach with natural elements', imageUrl: '/styles/scandinavian.jpg' },
   { id: 'trend-2', name: 'Industrial', description: 'Raw materials and exposed structural elements', imageUrl: '/styles/industrial.jpg' },
   { id: 'trend-3', name: 'Mid-Century Modern', description: 'Retro-inspired design with clean lines and organic forms', imageUrl: '/styles/mid-century.jpg' },
@@ -14,8 +32,7 @@ const TRENDING_STYLES = [
   { id: 'trend-6', name: 'Coastal', description: 'Beach-inspired with light colors and natural textures', imageUrl: '/styles/coastal.jpg' },
 ];
 
-// Design style categories for recommendations
-const DESIGN_CATEGORIES = {
+const DESIGN_CATEGORIES: DesignCategory = {
   'living room': ['Scandinavian', 'Industrial', 'Mid-Century Modern', 'Bohemian', 'Minimalist', 'Coastal'],
   'bedroom': ['Scandinavian', 'Bohemian', 'Minimalist', 'Coastal', 'Modern', 'Traditional'],
   'kitchen': ['Industrial', 'Scandinavian', 'Modern', 'Farmhouse', 'Contemporary', 'Minimalist'],
@@ -24,9 +41,7 @@ const DESIGN_CATEGORIES = {
   'dining room': ['Mid-Century Modern', 'Industrial', 'Scandinavian', 'Minimalist', 'Traditional', 'Contemporary'],
 };
 
-// Generate personalized recommendations based on user's design history
-function generatePersonalizedRecommendations(userDesigns) {
-  // If user has no designs, return some default recommendations
+function generatePersonalizedRecommendations(userDesigns: Array<Record<string, unknown>>): Recommendation[] {
   if (!userDesigns || userDesigns.length === 0) {
     return [
       { id: 'rec-1', name: 'Modern Living Room', description: 'Clean lines with contemporary furniture', imageUrl: '/recommendations/modern-living.jpg' },
@@ -36,28 +51,23 @@ function generatePersonalizedRecommendations(userDesigns) {
     ];
   }
 
-  // Analyze user's design preferences
-  const roomTypeCounts = {};
-  const designStyleCounts = {};
-  
+  const roomTypeCounts: Record<string, number> = {};
+  const designStyleCounts: Record<string, number> = {};
+
   userDesigns.forEach(design => {
-    // Count room types
-    roomTypeCounts[design.roomType] = (roomTypeCounts[design.roomType] || 0) + 1;
-    
-    // Count design styles
-    designStyleCounts[design.designType] = (designStyleCounts[design.designType] || 0) + 1;
+    const roomType = String(design.roomType ?? '');
+    const designType = String(design.designType ?? '');
+    roomTypeCounts[roomType] = (roomTypeCounts[roomType] || 0) + 1;
+    designStyleCounts[designType] = (designStyleCounts[designType] || 0) + 1;
   });
-  
-  // Find most common room type and design style
+
   const favoriteRoomType = Object.entries(roomTypeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'living room';
   const favoriteDesignStyle = Object.entries(designStyleCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Modern';
-  
-  // Generate recommendations based on user preferences
-  const recommendations = [];
-  
-  // Recommend their favorite style in different room types
+
+  const recommendations: Recommendation[] = [];
+
   Object.keys(DESIGN_CATEGORIES).forEach((roomType, index) => {
-    if (roomType !== favoriteRoomType && index < 3) { // Limit to 3 different room types
+    if (roomType !== favoriteRoomType && index < 3) {
       recommendations.push({
         id: `rec-room-${index}`,
         name: `${favoriteDesignStyle} ${roomType.charAt(0).toUpperCase() + roomType.slice(1)}`,
@@ -67,11 +77,10 @@ function generatePersonalizedRecommendations(userDesigns) {
       });
     }
   });
-  
-  // Recommend different styles for their favorite room type
+
   const roomStyles = DESIGN_CATEGORIES[favoriteRoomType] || DESIGN_CATEGORIES['living room'];
   roomStyles.forEach((style, index) => {
-    if (style !== favoriteDesignStyle && index < 3) { // Limit to 3 different styles
+    if (style !== favoriteDesignStyle && index < 3) {
       recommendations.push({
         id: `rec-style-${index}`,
         name: `${style} ${favoriteRoomType.charAt(0).toUpperCase() + favoriteRoomType.slice(1)}`,
@@ -81,49 +90,44 @@ function generatePersonalizedRecommendations(userDesigns) {
       });
     }
   });
-  
-  // If we don't have enough recommendations, add some general ones
+
   while (recommendations.length < 4) {
     const randomRoomType = Object.keys(DESIGN_CATEGORIES)[Math.floor(Math.random() * Object.keys(DESIGN_CATEGORIES).length)];
     const randomStyle = DESIGN_CATEGORIES[randomRoomType][Math.floor(Math.random() * DESIGN_CATEGORIES[randomRoomType].length)];
-    
-    const recommendation = {
+
+    const recommendation: Recommendation = {
       id: `rec-random-${recommendations.length}`,
       name: `${randomStyle} ${randomRoomType.charAt(0).toUpperCase() + randomRoomType.slice(1)}`,
       description: `Explore this popular ${randomStyle} design for your ${randomRoomType}`,
       imageUrl: `/recommendations/${randomRoomType.replace(' ', '-')}-${randomStyle.toLowerCase()}.jpg`,
       isPersonalized: false
     };
-    
-    // Check if this recommendation is already in the list
+
     const isDuplicate = recommendations.some(rec => rec.name === recommendation.name);
     if (!isDuplicate) {
       recommendations.push(recommendation);
     }
   }
-  
-  return recommendations.slice(0, 6); // Return at most 6 recommendations
+
+  return recommendations.slice(0, 6);
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
-    // Get current authenticated user
     const user = await currentUser();
-    
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    // Fetch user's designs from the database
+
     const userDesigns = await db
       .select()
       .from(designs)
       .where(eq(designs.userId, user.id))
-      .orderBy(designs.createdAt, 'desc');
-    
-    // Generate personalized recommendations
+      .orderBy(desc(designs.createdAt));
+
     const personalizedRecommendations = generatePersonalizedRecommendations(userDesigns);
-    
+
     return NextResponse.json({
       success: true,
       recommendations: {
@@ -131,7 +135,7 @@ export async function GET() {
         trending: TRENDING_STYLES
       }
     });
-    
+
   } catch (error) {
     console.error('Error generating recommendations:', error);
     return NextResponse.json(

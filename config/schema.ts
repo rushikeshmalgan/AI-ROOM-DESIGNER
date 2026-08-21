@@ -18,3 +18,6 @@ export const designs = pgTable("designs", {
   additionalRequirements: text("additionalRequirements"),
   createdAt: timestamp("createdAt").defaultNow(),
 });
+
+export type User = typeof users.$inferSelect;
+export type Design = typeof designs.$inferSelect;

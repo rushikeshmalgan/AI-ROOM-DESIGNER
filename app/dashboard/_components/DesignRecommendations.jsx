@@ -67,7 +67,7 @@ function DesignRecommendations({ userDesigns = [] }) {
           setRecommendations(data.recommendations.personalized.map(rec => ({
             name: rec.name,
             description: rec.description,
-            image: rec.imageUrl || '/placeholder-design.jpg',
+            image: rec.imageUrl || '/modern.jpg',
             tags: rec.name.split(' ') // Create tags from the name as a fallback
           })));
         } else {
@@ -131,7 +131,7 @@ function DesignRecommendations({ userDesigns = [] }) {
             setRecommendations(data.recommendations.personalized.map(rec => ({
               name: rec.name,
               description: rec.description,
-              image: rec.imageUrl || '/placeholder-design.jpg',
+              image: rec.imageUrl || '/modern.jpg',
               tags: rec.name.split(' ')
             })));
           }

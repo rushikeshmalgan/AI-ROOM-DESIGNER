@@ -25,6 +25,39 @@ function DesignCard({ design }) {
     day: 'numeric'
   });
 
+  const [copied, setCopied] = React.useState(false);
+
+  const handleShare = async () => {
+    const shareUrl = generatedImageUrl || window.location.href;
+    const shareData = {
+      title: `${roomType} - ${designType} Style Design`,
+      text: `Check out this AI-generated ${designType} ${roomType} design!`,
+      url: shareUrl,
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Error sharing:', err);
+        }
+      }
+    }
+
+    // Fallback: Clipboard copy
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      } catch (clipboardErr) {
+        console.error('Clipboard copy failed:', clipboardErr);
+      }
+    }
+  };
+
   return (
     <Card
       className="overflow-hidden transition-all duration-300 hover:scale-[1.02]"
@@ -88,9 +121,10 @@ function DesignCard({ design }) {
           <Button
             variant="outline"
             size="small"
+            onClick={handleShare}
             icon={<Share2 className="h-4 w-4" />}
           >
-            Share
+            {copied ? 'Copied Link!' : 'Share'}
           </Button>
         </div>
       </div>

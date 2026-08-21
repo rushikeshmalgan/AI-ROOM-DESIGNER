@@ -95,7 +95,7 @@ sequenceDiagram
 
 - **Hardcoded database credentials in `drizzle.config.js`.** The Neon connection string, including the password, is committed directly to the repository. The credentials must be rotated and the string must be replaced with `process.env.DATABASE_URL`. The commit history also needs to be scrubbed (e.g., with `git filter-repo`) because a simple delete-and-commit does not remove it from git history.
 
-- **Latent `ReferenceError` in `verify-user` route.** `app/api/verify-user/route.jsx` line 45 catches with parameter `e` but references `error` on lines 45–46. Any database failure in that route will throw a secondary `ReferenceError: error is not defined` rather than returning the intended 500 JSON response.
+- **Fixed: `ReferenceError` in `verify-user` route.** `app/api/verify-user/route.jsx` previously caught with parameter `e` but referenced `error` on lines 45–46. Any database failure in that route would throw a secondary `ReferenceError: error is not defined` rather than returning the intended 500 JSON response. Fixed by renaming the catch parameter to `error`.
 
 - **Test suite added in this pass.** There were no tests before this documentation/audit pass. The suite added covers Drizzle schema shape assertions and the `generate-design` and `upload-image` route handlers (happy path, 401, 400, 500) with all external calls mocked. See `__tests__/` for coverage details.
 
@@ -119,7 +119,7 @@ CLOUDINARY_API_SECRET=
 REPLICATE_API_TOKEN=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
-NEXT_PUBLIC_DATABASE_URL=          # Neon connection string (replace drizzle.config.js hardcode before use)
+DATABASE_URL=                       # Neon connection string (server-only; do not prefix with NEXT_PUBLIC_)
 
 # 3. Run dev server
 npm run dev

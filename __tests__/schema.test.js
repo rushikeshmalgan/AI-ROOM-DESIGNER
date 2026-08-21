@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { users, designs } from '@/config/schema.js';
+import { users, designs } from '@/config/schema';
 
 // Helpers to pull the raw column config drizzle exposes.
 function col(table, name) {
