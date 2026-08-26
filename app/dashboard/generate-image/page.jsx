@@ -19,6 +19,7 @@ function GenerateImagePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [generatedImage, setGeneratedImage] = useState(null);
+  const [saveWarning, setSaveWarning] = useState("");
 
   const styles = [
     { value: "photographic", label: "Photographic" },
@@ -60,6 +61,13 @@ function GenerateImagePage() {
 
       if (response.data.success) {
         setGeneratedImage(response.data.imageUrl);
+        // If the DB write failed, show a persistent warning so the user
+        // knows the image won't appear in their gallery on next visit.
+        if (response.data.saved === false) {
+          setSaveWarning(response.data.warning || "Image generated but could not be saved to your gallery. Please save it manually.");
+        } else {
+          setSaveWarning("");
+        }
       } else {
         setError("Failed to generate image. Please try again.");
       }
@@ -108,6 +116,12 @@ function GenerateImagePage() {
             {error && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
                 {error}
+              </div>
+            )}
+
+            {saveWarning && (
+              <div className="bg-amber-100 border border-amber-400 text-amber-800 px-4 py-3 rounded mb-4">
+                {saveWarning}
               </div>
             )}
 

@@ -15,6 +15,13 @@
       "when": 1755802189802,
       "tag": "0001_shiny_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756201200000,
+      "tag": "0002_add_clerk_id_fk",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { db } from "@/config/db";
 import { users } from "@/config/schema";  
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";  
 import { NextResponse } from "next/server";  
 
@@ -24,20 +24,30 @@ export async function POST() {
       .where(eq(users.email, email));
 
     if (userInfo.length === 0) {
-      // Insert new user
+      // Insert new user with clerkId
       const saveResult = await db.insert(users).values({
         name: user.fullName || "",
         email,
         imageUrl: user.imageUrl || "",
+        clerkId: user.id,
       }).returning({
         id: users.id,
         name: users.name,
         email: users.email,
         imageUrl: users.imageUrl,
         credits: users.credits,
+        clerkId: users.clerkId,
       });
 
       return NextResponse.json({ result: saveResult[0] });
+    }
+
+    // Backfill clerkId if it isn't set on an existing row
+    if (!userInfo[0].clerkId) {
+      await db
+        .update(users)
+        .set({ clerkId: user.id })
+        .where(eq(users.email, email));
     }
 
     // If user already exists, return existing data

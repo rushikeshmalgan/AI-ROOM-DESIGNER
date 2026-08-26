@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { generateRoomDesign } from '@/config/replicateConfig';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
-import { designs } from '@/config/schema';
-import { deductCredit, refundCredit, checkRateLimit } from '@/lib/credits';
+import { designs, users } from '@/config/schema';
+import { decrementCredit, checkRateLimit, syncCreditsToDb } from '@/lib/credits';
+import { eq } from 'drizzle-orm';
 
 export interface GenerateDesignRequestBody {
   imageUrl: string;
@@ -13,9 +14,6 @@ export interface GenerateDesignRequestBody {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  let userEmail = '';
-  let creditDeducted = false;
-
   try {
     const user = await currentUser();
 
@@ -23,29 +21,38 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    userEmail = user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || '';
-    if (!userEmail) {
-      return NextResponse.json({ error: 'User email not found' }, { status: 401 });
+    // Backfill clerkId on users row if not set (migration safety net)
+    const existingUser = await db
+      .select({ clerkId: users.clerkId })
+      .from(users)
+      .where(eq(users.email, user.primaryEmailAddress?.emailAddress ?? ''));
+    if (existingUser.length > 0 && !existingUser[0].clerkId) {
+      await db
+        .update(users)
+        .set({ clerkId: user.id })
+        .where(eq(users.email, user.primaryEmailAddress?.emailAddress ?? ''));
     }
 
-    // 1. Rate limit — 10 requests/minute per user
+    // Rate limit — 10 requests/minute per user
     const rateLimit = await checkRateLimit(user.id);
     if (!rateLimit.success) {
       return NextResponse.json(
-        { error: 'Rate limit exceeded. Please wait a moment before trying again.' },
+        { error: 'Rate limit exceeded. Please wait before trying again.' },
         { status: 429 }
       );
     }
 
-    // 2. Validate input BEFORE deducting credit
-    let body: GenerateDesignRequestBody;
-    try {
-      body = (await request.json()) as GenerateDesignRequestBody;
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
+    // Credits gate — atomic Redis decrement; 402 if exhausted
+    const creditResult = await decrementCredit(user.id);
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        { error: 'Insufficient credits. Upgrade or wait for refill.' },
+        { status: 402 }
+      );
     }
 
-    const { imageUrl, roomType, designType, additionalRequirements } = body;
+    const { imageUrl, roomType, designType, additionalRequirements } =
+      await request.json() as GenerateDesignRequestBody;
 
     if (!imageUrl || !roomType || !designType) {
       return NextResponse.json(
@@ -54,38 +61,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // 3. Atomically check & deduct 1 credit from database
-    const creditResult = await deductCredit(userEmail, user.fullName || '', user.imageUrl || '');
-    if (!creditResult.success) {
-      return NextResponse.json(
-        { error: 'Insufficient credits. Please purchase more credits to generate designs.' },
-        { status: 403 }
-      );
-    }
-    creditDeducted = true;
-
-    // 4. Generate room design using Replicate API
-    let generatedDesigns: string[] | null = null;
-    try {
-      generatedDesigns = await generateRoomDesign({
-        imageUrl,
-        roomType,
-        designStyle: designType,
-        additionalRequirements,
-      });
-    } catch (genError) {
-      console.error('Replicate API error:', genError);
-      await refundCredit(userEmail);
-      creditDeducted = false;
-      return NextResponse.json(
-        { error: 'Failed to generate room design' },
-        { status: 500 }
-      );
-    }
+    const generatedDesigns = await generateRoomDesign({
+      imageUrl,
+      roomType,
+      designStyle: designType,
+      additionalRequirements,
+    });
 
     if (!generatedDesigns || generatedDesigns.length === 0) {
-      await refundCredit(userEmail);
-      creditDeducted = false;
       return NextResponse.json(
         { error: 'Failed to generate design' },
         { status: 500 }
@@ -94,41 +77,34 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const generatedImageUrl = generatedDesigns[0];
 
-    // 5. Persist design to database
-    try {
-      const savedDesign = await db.insert(designs).values({
-        userId: user.id,
-        originalImageUrl: imageUrl,
-        generatedImageUrl,
-        roomType,
-        designType,
-        additionalRequirements: additionalRequirements || '',
-        createdAt: new Date(),
-      }).returning();
+    const savedDesign = await db.insert(designs).values({
+      userId: user.id,
+      originalImageUrl: imageUrl,
+      generatedImageUrl,
+      roomType,
+      designType,
+      additionalRequirements: additionalRequirements || '',
+      createdAt: new Date(),
+    }).returning();
 
-      return NextResponse.json({
-        success: true,
-        design: savedDesign[0],
-        generatedImageUrl,
-        creditsRemaining: creditResult.creditsRemaining,
-      });
-    } catch (dbError) {
-      console.error('Database save error:', dbError);
-      // Refund credit if DB persistence failed
-      await refundCredit(userEmail);
-      return NextResponse.json(
-        { error: 'Failed to save generated design' },
-        { status: 500 }
-      );
+    // Async best-effort: write decremented credits back to Postgres so
+    // the dashboard display stays roughly in sync.
+    const email = user.primaryEmailAddress?.emailAddress ?? '';
+    if (email) {
+      void syncCreditsToDb(email, creditResult.remaining);
     }
+
+    return NextResponse.json({
+      success: true,
+      design: savedDesign[0],
+      generatedImageUrl,
+      creditsRemaining: creditResult.remaining,
+    });
 
   } catch (error) {
-    console.error('Unhandled error in generate-design route:', error);
-    if (creditDeducted && userEmail) {
-      await refundCredit(userEmail);
-    }
+    console.error('Error generating room design:', error);
     return NextResponse.json(
-      { error: 'An unexpected error occurred while generating room design' },
+      { error: 'Failed to generate room design' },
       { status: 500 }
     );
   }

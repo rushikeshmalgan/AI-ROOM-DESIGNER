@@ -26,7 +26,7 @@ function col(table, name) {
 describe('schema: users table', () => {
   it('has correct column names', () => {
     const cols = Object.keys(users);
-    expect(cols).toEqual(expect.arrayContaining(['id', 'name', 'email', 'imageUrl', 'credits']));
+    expect(cols).toEqual(expect.arrayContaining(['id', 'name', 'email', 'imageUrl', 'credits', 'clerkId']));
   });
 
   it('id — serial primary key', () => {
@@ -60,6 +60,12 @@ describe('schema: users table', () => {
     expect(c.notNull).toBe(false);
     expect(c.hasDefault).toBe(true);
     expect(c.default).toBe(3);
+  });
+
+  it('clerkId — varchar, notNull', () => {
+    const c = col(users, 'clerkId');
+    expect(c.columnType).toBe('PgVarchar');
+    expect(c.notNull).toBe(true);
   });
 });
 
