@@ -15,8 +15,13 @@ export interface ClerkUserData {
  * route (client-triggered fallback) and the Clerk webhook handler (primary
  * provisioning path) so both call the same logic.
  *
- * Returns the user row (inserted or existing), or null if the user has no
- * email (cannot provision without an email to key on).
+ * Uses an atomic INSERT ... ON CONFLICT DO NOTHING so concurrent callers
+ * (webhook + client) don't race: the winner gets the row from .returning(),
+ * the loser falls through to a SELECT and gets the same row. No exception
+ * is thrown on either path.
+ *
+ * Returns the user row, or null if the user has no email (cannot provision
+ * without an email to key on).
  */
 export async function upsertUserFromClerk(clerkUser: ClerkUserData) {
   const email =
@@ -27,24 +32,6 @@ export async function upsertUserFromClerk(clerkUser: ClerkUserData) {
     return null;
   }
 
-  // Check if user already exists by email
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email));
-
-  if (existing.length > 0) {
-    // Backfill clerkId if it isn't set
-    if (!existing[0].clerkId) {
-      await db
-        .update(users)
-        .set({ clerkId: clerkUser.id })
-        .where(eq(users.email, email));
-    }
-    return existing[0];
-  }
-
-  // Insert new user
   const inserted = await db
     .insert(users)
     .values({
@@ -53,6 +40,7 @@ export async function upsertUserFromClerk(clerkUser: ClerkUserData) {
       imageUrl: clerkUser.imageUrl || '',
       clerkId: clerkUser.id,
     })
+    .onConflictDoNothing({ target: users.email })
     .returning({
       id: users.id,
       name: users.name,
@@ -62,5 +50,22 @@ export async function upsertUserFromClerk(clerkUser: ClerkUserData) {
       clerkId: users.clerkId,
     });
 
-  return inserted[0];
+  if (inserted.length > 0) {
+    return inserted[0];
+  }
+
+  // Someone else won the race and inserted first — fetch what they created.
+  const existing = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      imageUrl: users.imageUrl,
+      credits: users.credits,
+      clerkId: users.clerkId,
+    })
+    .from(users)
+    .where(eq(users.email, email));
+
+  return existing[0] ?? null;
 }
