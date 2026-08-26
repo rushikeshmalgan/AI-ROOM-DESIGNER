@@ -53,11 +53,10 @@ describe('schema: users table', () => {
     expect(c.notNull).toBe(true);
   });
 
-  it('credits — integer, nullable (no notNull), default 3', () => {
+  it('credits — integer, notNull, default 3', () => {
     const c = col(users, 'credits');
     expect(c.columnType).toBe('PgInteger');
-    // credits has .default(3) but no .notNull() — nullable is intentional
-    expect(c.notNull).toBe(false);
+    expect(c.notNull).toBe(true);
     expect(c.hasDefault).toBe(true);
     expect(c.default).toBe(3);
   });

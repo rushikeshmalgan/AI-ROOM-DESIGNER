@@ -89,7 +89,7 @@ sequenceDiagram
 
 ## Honest limitations
 
-- **No server-side credits enforcement.** The `credits` field in `users` defaults to `3` and is displayed in the dashboard header (`app/dashboard/_components/Header.jsx`, lines 52–54). Neither `app/api/generate-design/route.js` nor `app/api/generate-image/route.js` reads or decrements `credits` before calling Replicate or Ideogram. An authenticated user with `credits = 0` can POST directly to either endpoint and generation will succeed. This is a known gap, not an oversight that slipped through — documenting it here so the next engineer (or future me) knows exactly where to add the guard.
+- **Redis-backed credits enforcement (implemented).** Both `app/api/generate-design/route.ts` and `app/api/generate-image/route.ts` now enforce credits via Redis before calling Replicate/Ideogram. The flow: atomic Lua check-and-decrement in Redis (`credits:{userId}`), 402 on exhausted, 429 on rate limit (10 req/min sliding window via `@upstash/ratelimit`). Redis is seeded with Postgres `default(3)` on first read. Postgres `users.credits` remains the display source; an async best-effort `syncCreditsToDb` writes back after successful generation. Requires `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` env vars.
 
 - **No database-level foreign key between `designs.userId` and `users.id`.** Documented above under Schema. If a `users` row is deleted, the associated `designs` rows will remain with no referential integrity check at the DB layer.
 
@@ -97,7 +97,7 @@ sequenceDiagram
 
 - **Fixed: `ReferenceError` in `verify-user` route.** `app/api/verify-user/route.jsx` previously caught with parameter `e` but referenced `error` on lines 45–46. Any database failure in that route would throw a secondary `ReferenceError: error is not defined` rather than returning the intended 500 JSON response. Fixed by renaming the catch parameter to `error`.
 
-- **Test suite added in this pass.** There were no tests before this documentation/audit pass. The suite added covers Drizzle schema shape assertions and the `generate-design` and `upload-image` route handlers (happy path, 401, 400, 500) with all external calls mocked. See `__tests__/` for coverage details.
+- **Test suite.** Covers Drizzle schema shape assertions, Redis credits logic (in-memory fake), and the `generate-design`, `generate-image`, and `upload-image` route handlers (happy path, 401, 402, 429, 400, 500) with all external calls mocked. 48 tests total across 5 files. See `__tests__/` and `lib/credits.test.ts` for coverage details.
 
 - **`generate-image` route does not write to the database.** Ideogram-generated images are returned to the client but not persisted to the `designs` table. Whether this is intentional or an oversight is unclear from the code alone — flagged as ambiguous.
 
@@ -120,6 +120,8 @@ REPLICATE_API_TOKEN=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 DATABASE_URL=                       # Neon connection string (server-only; do not prefix with NEXT_PUBLIC_)
+UPSTASH_REDIS_REST_URL=             # Upstash Redis REST URL (credits gate + rate limit)
+UPSTASH_REDIS_REST_TOKEN=           # Upstash Redis REST token
 
 # 3. Run dev server
 npm run dev
@@ -129,4 +131,4 @@ npm run dev
 npm test
 ```
 
-**Required external accounts:** Neon (free tier sufficient), Cloudinary (free tier), Replicate (pay-per-run), Clerk (free tier).
+**Required external accounts:** Neon (free tier sufficient), Cloudinary (free tier), Replicate (pay-per-run), Clerk (free tier), Upstash Redis (free tier — 10k requests/day).
