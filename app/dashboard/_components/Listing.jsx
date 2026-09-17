@@ -4,13 +4,14 @@ import { useUser } from '@clerk/nextjs'
 import React, { useState, useEffect } from 'react'
 import EmptyState from './EmptyState';
 import Link from 'next/link';
-import DesignCard from './DesignCard';
+import DesignChain from './DesignChain';
 import axios from 'axios';
 import { Loader2, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Button from '@/app/components/ui/Button';
 import Card from '@/app/components/ui/Card';
 import LoadingSpinner from '@/app/components/ui/LoadingSpinner';
+import { buildDesignChains } from '@/lib/designChains';
 
 function Listing() {
   const { user } = useUser();
@@ -38,6 +39,12 @@ function Listing() {
     
     fetchUserDesigns();
   }, [user]);
+
+  const handleRefined = (newDesign) => {
+    setUserRoomList((prev) => [newDesign, ...prev]);
+  };
+
+  const chains = buildDesignChains(userRoomList);
 
   // Animation variants
   const containerVariants = {
@@ -122,13 +129,13 @@ function Listing() {
           <EmptyState />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-            {userRoomList.map((design, index) => (
-              <motion.div 
-                key={design.id} 
+            {chains.map((chain, index) => (
+              <motion.div
+                key={chain[0].id}
                 variants={itemVariants}
                 custom={index}
               >
-                <DesignCard design={design} />
+                <DesignChain chain={chain} onRefined={handleRefined} />
               </motion.div>
             ))}
           </div>
