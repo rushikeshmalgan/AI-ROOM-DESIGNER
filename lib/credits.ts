@@ -33,13 +33,22 @@ export function getRateLimiter(): Ratelimit {
 const CREDITS_PREFIX = 'credits:';
 const DEFAULT_CREDITS = 3;
 
-// Lua script: atomically check-and-decrement. Returns [1, remaining] on
-// success, [0, 0] if the balance is already zero (no decrement performed).
+// Lua script: atomically seed-if-missing, then check-and-decrement.
+// A brand-new key (never touched by getCredits) is seeded with the
+// default balance in the same atomic step as the decrement — otherwise
+// a user's very first generation would read a missing key as 0 credits
+// and be rejected before ever getting their starting balance. Returns
+// [1, remaining] on success, [0, remaining] if the balance is already
+// zero (no decrement performed).
 const luaDecrement = `
   local current = redis.call('GET', KEYS[1])
   local count = tonumber(current)
-  if not count or count <= 0 then
-    return {0, 0}
+  if not count then
+    count = tonumber(ARGV[1])
+    redis.call('SET', KEYS[1], count)
+  end
+  if count <= 0 then
+    return {0, count}
   end
   local remaining = redis.call('DECR', KEYS[1])
   return {1, tonumber(remaining)}
@@ -62,7 +71,7 @@ export async function getCredits(userId: string): Promise<number> {
 export async function decrementCredit(userId: string): Promise<{ ok: boolean; remaining: number }> {
   const redis = getRedis();
   const key = `${CREDITS_PREFIX}${userId}`;
-  const result = await redis.eval(luaDecrement, [key], []) as [number, number];
+  const result = await redis.eval(luaDecrement, [key], [DEFAULT_CREDITS]) as [number, number];
   return { ok: result[0] === 1, remaining: result[1] };
 }
 

@@ -14,11 +14,15 @@ const { fakeRedis, fakeStore } = vi.hoisted(() => {
       store[key] = String(next);
       return next;
     }),
-    eval: vi.fn(async (_script: string, keys: string[], _args: unknown[]) => {
+    eval: vi.fn(async (_script: string, keys: string[], args: unknown[]) => {
       const key = keys[0];
       const current = store[key];
-      const count = current ? parseInt(current, 10) : 0;
-      if (count <= 0) return [0, 0];
+      let count = current ? parseInt(current, 10) : NaN;
+      if (Number.isNaN(count)) {
+        count = Number(args[0]);
+        store[key] = String(count);
+      }
+      if (count <= 0) return [0, count];
       const remaining = count - 1;
       store[key] = String(remaining);
       return [1, remaining];
@@ -115,9 +119,10 @@ describe('lib/credits', () => {
       expect(fakeStore['credits:user123']).toBe('0');
     });
 
-    it('returns ok:false when key does not exist', async () => {
+    it('seeds the default balance and decrements on a brand-new key', async () => {
       const result = await decrementCredit('nonexistent');
-      expect(result).toEqual({ ok: false, remaining: 0 });
+      expect(result).toEqual({ ok: true, remaining: 2 });
+      expect(fakeStore['credits:nonexistent']).toBe('2');
     });
   });
 
