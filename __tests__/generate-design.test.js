@@ -44,11 +44,16 @@ vi.mock('@/lib/credits', () => ({
   refundCredit: vi.fn(),
 }));
 
+vi.mock('@/lib/analytics', () => ({
+  trackEvent: vi.fn(),
+}));
+
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 import { currentUser } from '@clerk/nextjs/server';
 import { generateRoomDesign } from '@/config/replicateConfig';
 import * as dbModule from '@/config/db';
 import { decrementCredit, checkRateLimit, refundCredit } from '@/lib/credits';
+import { trackEvent } from '@/lib/analytics';
 import { POST } from '@/app/api/generate-design/route';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,6 +113,9 @@ describe('POST /api/generate-design', () => {
     expect(dbModule.__mockInsert).toHaveBeenCalledTimes(1);
     expect(decrementCredit).toHaveBeenCalledTimes(1);
     expect(decrementCredit).toHaveBeenCalledWith(AUTHED_USER.id);
+
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'generation_started', userId: AUTHED_USER.id }));
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'generation_succeeded', userId: AUTHED_USER.id }));
   });
 
   // ── 401 — unauthenticated ──────────────────────────────────────────────────
@@ -264,6 +272,7 @@ describe('POST /api/generate-design', () => {
     expect(refundCredit).toHaveBeenCalledTimes(1);
     expect(refundCredit).toHaveBeenCalledWith(AUTHED_USER.id);
     expect(dbModule.__mockInsert).not.toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'generation_failed', userId: AUTHED_USER.id }));
   });
 
   // ── generation succeeds but DB save fails → 200 with saved:false ───────────

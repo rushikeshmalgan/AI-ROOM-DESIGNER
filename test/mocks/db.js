@@ -4,7 +4,7 @@
 // not general Drizzle semantics. State lives for the lifetime of the
 // `next dev`/`next start` process the E2E run boots — see
 // __resetTestDb()/__seedTestDb() below if a spec needs a clean slate.
-import { users, designs } from '@/config/schema';
+import { users, designs, events } from '@/config/schema';
 
 // Duplicated (not imported) from drizzle-orm.js: NormalModuleReplacementPlugin
 // swaps the resolved resource for config/db.ts but doesn't preserve this
@@ -14,30 +14,40 @@ import { users, designs } from '@/config/schema';
 const columnKeyMap = new Map();
 for (const [key, col] of Object.entries(users)) columnKeyMap.set(col, key);
 for (const [key, col] of Object.entries(designs)) columnKeyMap.set(col, key);
+for (const [key, col] of Object.entries(events)) columnKeyMap.set(col, key);
 
 let usersStore = [];
 let designsStore = [];
+let eventsStore = [];
 let nextUserId = 1;
 let nextDesignId = 1;
+let nextEventId = 1;
 
 export function __resetTestDb() {
   usersStore = [];
   designsStore = [];
+  eventsStore = [];
   nextUserId = 1;
   nextDesignId = 1;
+  nextEventId = 1;
 }
 
-export function __seedTestDb({ users: u, designs: d } = {}) {
+export function __seedTestDb({ users: u, designs: d, events: e } = {}) {
   if (u) usersStore = u;
   if (d) designsStore = d;
+  if (e) eventsStore = e;
 }
 
 function storeFor(table) {
-  return table === users ? usersStore : designsStore;
+  if (table === users) return usersStore;
+  if (table === events) return eventsStore;
+  return designsStore;
 }
 
 function nextIdFor(table) {
-  return table === users ? nextUserId++ : nextDesignId++;
+  if (table === users) return nextUserId++;
+  if (table === events) return nextEventId++;
+  return nextDesignId++;
 }
 
 function applyWhere(rows, condition) {

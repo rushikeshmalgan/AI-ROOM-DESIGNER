@@ -16,7 +16,12 @@ vi.mock('@/lib/userUpsert', () => ({
   upsertUserFromClerk: vi.fn(),
 }));
 
+vi.mock('@/lib/analytics', () => ({
+  trackEvent: vi.fn(),
+}));
+
 import { upsertUserFromClerk } from '@/lib/userUpsert';
+import { trackEvent } from '@/lib/analytics';
 import { POST } from '@/app/api/webhooks/clerk/route';
 
 function makeWebhookRequest(payload, headers) {
@@ -63,6 +68,7 @@ describe('POST /api/webhooks/clerk', () => {
     expect(upsertUserFromClerk).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'user_clerk_new' })
     );
+    expect(trackEvent).toHaveBeenCalledWith({ event: 'signup', userId: 'user_clerk_new' });
   });
 
   it('missing svix headers → 401', async () => {

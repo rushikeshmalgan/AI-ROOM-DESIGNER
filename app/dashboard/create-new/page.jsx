@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import ImageSelection from "./_components/ImageSelection";
@@ -11,6 +11,7 @@ import { motion } from "framer-motion";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 import GenerationStages from "@/app/components/ui/GenerationStages";
+import { track } from "@/lib/analyticsClient";
 
 function CreateNew() {
   const router = useRouter();
@@ -22,6 +23,10 @@ function CreateNew() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    track("create_design_started");
+  }, []);
   // Whether the failed request definitely never touched a credit
   // (validation/auth/rate-limit failures, or a provider failure the
   // server already refunded) — surfaced so the user never has to

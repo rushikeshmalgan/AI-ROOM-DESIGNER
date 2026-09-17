@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import Card from "@/app/components/ui/Card";
 import LoadingSpinner from "@/app/components/ui/LoadingSpinner";
 import { resizeImageIfNeeded } from "@/lib/clientImage";
+import { track } from "@/lib/analyticsClient";
 
 function ImageSelection({ selectedImage }) {
   const [preview, setPreview] = useState(null);
@@ -37,6 +38,7 @@ function ImageSelection({ selectedImage }) {
       const response = await axios.post("/api/upload-image", formData);
       if (requestId !== requestIdRef.current) return; // superseded by a newer selection
 
+      track("image_uploaded");
       selectedImage(response.data.imageUrl);
     } catch (err) {
       if (requestId !== requestIdRef.current) return;

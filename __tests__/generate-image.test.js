@@ -40,10 +40,15 @@ vi.mock('@/lib/credits', () => ({
   refundCredit: vi.fn(),
 }));
 
+vi.mock('@/lib/analytics', () => ({
+  trackEvent: vi.fn(),
+}));
+
 import { currentUser } from '@clerk/nextjs/server';
 import { generateIdeogramImage } from '@/config/ideogramConfig';
 import * as dbModule from '@/config/db';
 import { decrementCredit, checkRateLimit, refundCredit } from '@/lib/credits';
+import { trackEvent } from '@/lib/analytics';
 import { POST } from '@/app/api/generate-image/route';
 
 function makeRequest(body) {
@@ -81,6 +86,8 @@ describe('POST /api/generate-image', () => {
     expect(body.saved).toBe(true);
     expect(body.creditsRemaining).toBe(2);
     expect(decrementCredit).toHaveBeenCalledWith(AUTHED_USER.id);
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'generation_started', userId: AUTHED_USER.id }));
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'generation_succeeded', userId: AUTHED_USER.id }));
   });
 
   it('unauthenticated — currentUser() returns null → 401', async () => {
@@ -156,6 +163,7 @@ describe('POST /api/generate-image', () => {
     expect(body.error).toMatch(/not charged/);
     expect(refundCredit).toHaveBeenCalledTimes(1);
     expect(dbModule.__mockInsert).not.toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'generation_failed', userId: AUTHED_USER.id }));
   });
 
   it('DB insert fails → 200 with saved:false and warning, imageUrl still returned', async () => {

@@ -6,6 +6,7 @@ import {
   text,
   timestamp,
   index,
+  jsonb,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -62,8 +63,35 @@ export const designs = pgTable("designs", {
   parentDesignIdIdx: index("designs_parentDesignId_idx").on(table.parentDesignId),
 }));
 
+// Product analytics — one row per tracked event. Deliberately just a
+// name + a small JSON bag of properties rather than a dedicated table
+// per event type: the event list is still short and evolving (see
+// lib/analytics.ts), and a normalized schema per event would be
+// premature for the volume this product has right now.
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+
+  // Clerk user ID. Nullable — landing_view and similar happen before
+  // anyone is signed in. No FK to users.clerkId: unlike designs, an
+  // event should never be lost/cascaded if the user row changes, and a
+  // pre-signup event has no user row to reference at all.
+  userId: varchar("userId", { length: 256 }),
+
+  event: varchar("event", { length: 100 }).notNull(),
+
+  properties: jsonb("properties"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  eventIdx: index("events_event_idx").on(table.event),
+  userIdIdx: index("events_userId_idx").on(table.userId),
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 export type Design = typeof designs.$inferSelect;
 export type NewDesign = typeof designs.$inferInsert;
+
+export type AnalyticsEvent = typeof events.$inferSelect;
+export type NewAnalyticsEvent = typeof events.$inferInsert;

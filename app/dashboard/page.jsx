@@ -6,12 +6,17 @@ import Listing from './_components/Listing'
 import DesignRecommendations from './_components/DesignRecommendations'
 import { motion } from 'framer-motion'
 import axios from 'axios'
+import { track } from '@/lib/analyticsClient'
 
 function Dashboard() {
   const { user } = useUser();
   const [userDesigns, setUserDesigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    track('dashboard_view');
+  }, []);
 
   useEffect(() => {
     if (!user) return;

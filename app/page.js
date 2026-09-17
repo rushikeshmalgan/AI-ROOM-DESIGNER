@@ -1,12 +1,18 @@
 "use client";
 
+import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
+import { track } from "@/lib/analyticsClient";
 
 export default function Home() {
+  useEffect(() => {
+    track("landing_view");
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-purple-50 dark:from-gray-900 dark:to-gray-800">
       {/* Hero Section */}

@@ -40,10 +40,15 @@ vi.mock('@/lib/credits', () => ({
   refundCredit: vi.fn(),
 }));
 
+vi.mock('@/lib/analytics', () => ({
+  trackEvent: vi.fn(),
+}));
+
 import { currentUser } from '@clerk/nextjs/server';
 import { refineRoomDesign } from '@/config/replicateConfig';
 import * as dbModule from '@/config/db';
 import { decrementCredit, checkRateLimit, refundCredit } from '@/lib/credits';
+import { trackEvent } from '@/lib/analytics';
 import { POST } from '@/app/api/designs/[id]/refine/route';
 
 function makeRequest(body) {
@@ -106,6 +111,9 @@ describe('POST /api/designs/:id/refine', () => {
     const insertedValues = dbModule.__mockValues.mock.calls[0][0];
     expect(insertedValues.parentDesignId).toBe(42);
     expect(insertedValues.originalImageUrl).toBe(PARENT_DESIGN.originalImageUrl);
+
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'refinement_started', userId: OWNER.id }));
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'refinement_succeeded', userId: OWNER.id }));
   });
 
   it('unauthenticated — 401, nothing touched', async () => {
@@ -228,6 +236,7 @@ describe('POST /api/designs/:id/refine', () => {
     expect(body.error).toMatch(/not charged/);
     expect(refundCredit).toHaveBeenCalledWith(OWNER.id);
     expect(dbModule.__mockInsert).not.toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith(expect.objectContaining({ event: 'refinement_failed', userId: OWNER.id }));
   });
 
   it('Replicate returns empty array → 500, credit refunded', async () => {

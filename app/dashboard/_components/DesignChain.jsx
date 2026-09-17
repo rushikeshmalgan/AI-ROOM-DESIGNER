@@ -6,6 +6,7 @@ import { Download, Share2, Sparkles, Loader2, CornerDownRight } from 'lucide-rea
 import Card from '@/app/components/ui/Card';
 import Button from '@/app/components/ui/Button';
 import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
+import { track } from '@/lib/analyticsClient';
 
 const SUGGESTED_REFINEMENTS = [
   'Change the sofa',
@@ -48,6 +49,7 @@ function DesignChain({ chain, onRefined }) {
     if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.(shareData)) {
       try {
         await navigator.share(shareData);
+        track('design_shared', { designId: design.id, method: 'native_share' });
         return;
       } catch (err) {
         if (err.name !== 'AbortError') console.error('Error sharing:', err);
@@ -57,6 +59,7 @@ function DesignChain({ chain, onRefined }) {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(shareUrl);
+        track('design_shared', { designId: design.id, method: 'copy_link' });
       } catch (clipboardErr) {
         console.error('Clipboard copy failed:', clipboardErr);
       }
@@ -135,7 +138,10 @@ function DesignChain({ chain, onRefined }) {
                 <Button
                   variant="outline"
                   size="small"
-                  onClick={() => window.open(design.generatedImageUrl, '_blank')}
+                  onClick={() => {
+                    track('design_saved', { designId: design.id });
+                    window.open(design.generatedImageUrl, '_blank');
+                  }}
                   icon={<Download className="h-4 w-4" />}
                 >
                   Save

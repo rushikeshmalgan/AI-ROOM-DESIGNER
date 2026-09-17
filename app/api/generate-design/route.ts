@@ -5,6 +5,7 @@ import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
 import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
 import { newGenerationId, logGeneration } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateDesignRequestBody {
@@ -68,6 +69,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     // produce a design must refund it before returning.
     const generationId = newGenerationId();
     const startTime = Date.now();
+    void trackEvent({
+      event: 'generation_started', userId: user.id,
+      properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl' },
+    });
+
     let generatedDesigns: string[] | undefined;
     try {
       generatedDesigns = await generateRoomDesign({
@@ -78,10 +84,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     } catch (genError) {
       console.error('Error generating room design:', genError);
+      const durationMs = Date.now() - startTime;
+      const failureReason = genError instanceof Error ? genError.message : 'unknown error';
       logGeneration({
         generationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
-        roomType, designStyle: designType, durationMs: Date.now() - startTime,
-        success: false, failureReason: genError instanceof Error ? genError.message : 'unknown error',
+        roomType, designStyle: designType, durationMs, success: false, failureReason,
+      });
+      void trackEvent({
+        event: 'generation_failed', userId: user.id,
+        properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: durationMs },
       });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
@@ -91,10 +102,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     if (!generatedDesigns || generatedDesigns.length === 0) {
+      const durationMs = Date.now() - startTime;
       logGeneration({
         generationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
-        roomType, designStyle: designType, durationMs: Date.now() - startTime,
-        success: false, failureReason: 'empty result from provider',
+        roomType, designStyle: designType, durationMs, success: false, failureReason: 'empty result from provider',
+      });
+      void trackEvent({
+        event: 'generation_failed', userId: user.id,
+        properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: durationMs },
       });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
@@ -125,10 +140,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       saved = false;
     }
 
+    const successDurationMs = Date.now() - startTime;
     logGeneration({
       generationId, userId: user.id, designId: savedDesign?.id ?? null,
       provider: 'replicate-sdxl', generationType: 'initial', roomType, designStyle: designType,
-      durationMs: Date.now() - startTime, success: true,
+      durationMs: successDurationMs, success: true,
+    });
+    void trackEvent({
+      event: 'generation_succeeded', userId: user.id,
+      properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: successDurationMs },
     });
 
     // Async best-effort: write decremented credits back to Postgres so

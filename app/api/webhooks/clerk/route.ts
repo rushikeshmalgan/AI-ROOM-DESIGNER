@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { upsertUserFromClerk } from '@/lib/userUpsert';
+import { trackEvent } from '@/lib/analytics';
 
 export async function POST(request: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -53,6 +54,8 @@ export async function POST(request: Request) {
       console.error('Failed to provision user from webhook:', err);
       return NextResponse.json({ error: 'Failed to provision user' }, { status: 500 });
     }
+
+    void trackEvent({ event: 'signup', userId: data.id as string });
   }
 
   // Acknowledge receipt — Clerk expects a 2xx response

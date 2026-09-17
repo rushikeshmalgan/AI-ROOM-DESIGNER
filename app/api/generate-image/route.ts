@@ -5,6 +5,7 @@ import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
 import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
 import { newGenerationId, logGeneration } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateImageRequestBody {
@@ -69,6 +70,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     // produce an image must refund it before returning.
     const generationId = newGenerationId();
     const startTime = Date.now();
+    void trackEvent({
+      event: 'generation_started', userId: user.id,
+      properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram' },
+    });
+
     let imageUrl: string | null = null;
     try {
       imageUrl = await generateIdeogramImage({
@@ -78,10 +84,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     } catch (genError) {
       console.error('Error generating image with Ideogram:', genError);
+      const durationMs = Date.now() - startTime;
       logGeneration({
         generationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
-        designStyle: style || 'photographic', durationMs: Date.now() - startTime,
+        designStyle: style || 'photographic', durationMs,
         success: false, failureReason: genError instanceof Error ? genError.message : 'unknown error',
+      });
+      void trackEvent({
+        event: 'generation_failed', userId: user.id,
+        properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: durationMs },
       });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
@@ -91,10 +102,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     if (!imageUrl) {
+      const durationMs = Date.now() - startTime;
       logGeneration({
         generationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
-        designStyle: style || 'photographic', durationMs: Date.now() - startTime,
+        designStyle: style || 'photographic', durationMs,
         success: false, failureReason: 'empty result from provider',
+      });
+      void trackEvent({
+        event: 'generation_failed', userId: user.id,
+        properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: durationMs },
       });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
@@ -130,10 +146,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       saved = false;
     }
 
+    const successDurationMs = Date.now() - startTime;
     logGeneration({
       generationId, userId: user.id, designId: savedId,
       provider: 'replicate-ideogram', generationType: 'initial',
-      designStyle: style || 'photographic', durationMs: Date.now() - startTime, success: true,
+      designStyle: style || 'photographic', durationMs: successDurationMs, success: true,
+    });
+    void trackEvent({
+      event: 'generation_succeeded', userId: user.id,
+      properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: successDurationMs },
     });
 
     return NextResponse.json({
