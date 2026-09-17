@@ -130,11 +130,16 @@ describe('schema: designs table', () => {
     expect(c.hasDefault).toBe(true);
   });
 
-  it('no FK constraint declared between designs.userId and users.id', () => {
-    // Drizzle exposes foreignKeyConfigs on a table. Asserting the array is
-    // empty confirms that no FK was declared at the schema level — referential
-    // integrity is app-enforced only.
+  it('userId declares an FK to users.clerkId (matches drizzle/0002_add_clerk_id_fk.sql)', () => {
+    // drizzle/0002_add_clerk_id_fk.sql added a real FK at the DB level
+    // (designs.userId -> users.clerkId, ON DELETE CASCADE). schema.ts
+    // must declare it too via .references() so drizzle-kit and the type
+    // system agree with what's actually in the database.
     const fks = designs[Symbol.for('drizzle:PgInlineForeignKeys')] ?? [];
-    expect(fks).toHaveLength(0);
+    expect(fks).toHaveLength(1);
+    const reference = fks[0].reference();
+    expect(reference.columns.map((c) => c.name)).toEqual(['userId']);
+    expect(reference.foreignColumns.map((c) => c.name)).toEqual(['clerkId']);
+    expect(fks[0].onDelete).toBe('cascade');
   });
 });

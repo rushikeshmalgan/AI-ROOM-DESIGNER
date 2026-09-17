@@ -24,8 +24,13 @@ export const users = pgTable("users", {
 export const designs = pgTable("designs", {
   id: serial("id").primaryKey(),
 
-  // Clerk user ID
-  userId: varchar("userId", { length: 256 }).notNull(),
+  // Clerk user ID. FK added at the DB level in
+  // drizzle/0002_add_clerk_id_fk.sql (designs.userId -> users.clerkId,
+  // ON DELETE CASCADE) — declared here too so drizzle-kit and the type
+  // system agree with what's actually in the database.
+  userId: varchar("userId", { length: 256 })
+    .notNull()
+    .references(() => users.clerkId, { onDelete: "cascade" }),
 
   originalImageUrl: varchar("originalImageUrl", {
     length: 512,

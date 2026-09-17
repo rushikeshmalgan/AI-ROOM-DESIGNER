@@ -22,6 +22,13 @@
       "when": 1756201200000,
       "tag": "0002_add_clerk_id_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789640331478,
+      "tag": "0003_reconcile_schema_constraints",
+      "breakpoints": true
     }
   ]
 }

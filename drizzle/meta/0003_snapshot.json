@@ -1,6 +1,6 @@
 {
-  "id": "a3b1c2d4-e5f6-7890-abcd-ef1234567890",
-  "prevId": "19756e59-4615-4674-82ac-a651cda94a01",
+  "id": "19752ac5-9790-48db-bc2d-272fa6dc82d4",
+  "prevId": "a3b1c2d4-e5f6-7890-abcd-ef1234567890",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -54,7 +54,7 @@
           "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "now()"
         }
       },
@@ -64,8 +64,12 @@
           "name": "designs_userId_users_clerkId_fk",
           "tableFrom": "designs",
           "tableTo": "users",
-          "columnsFrom": ["userId"],
-          "columnsTo": ["clerkId"],
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "clerkId"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -108,7 +112,7 @@
           "name": "credits",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": 3
         },
         "clerkId": {
@@ -118,27 +122,23 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "users_clerkId_idx": {
-          "name": "users_clerkId_idx",
-          "columns": [
-            {
-              "expression": "clerkId",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        },
         "users_clerkId_unique": {
           "name": "users_clerkId_unique",
           "nullsNotDistinct": false,
-          "columns": ["clerkId"]
+          "columns": [
+            "clerkId"
+          ]
         }
       },
       "policies": {},
