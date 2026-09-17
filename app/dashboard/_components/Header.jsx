@@ -3,77 +3,65 @@
 import React, { useContext } from 'react';
 import Image from 'next/image'
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs'
 import { UserDetailContext } from '@/app/_context/UserDetailContext'
-import { Home, PlusCircle, Image as ImageIcon } from 'lucide-react'
-import { motion } from 'framer-motion';
+import { Sparkles } from 'lucide-react'
+import { cn } from '@/lib/utils';
+
+const NAV_LINKS = [
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/dashboard/create-new', label: 'Create' },
+  { href: '/dashboard/generate-image', label: 'Gallery' },
+];
 
 function Header() {
   const { userDetail } = useContext(UserDetailContext);
+  const pathname = usePathname();
 
   return (
-    <motion.div 
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="w-full bg-white/70 dark:bg-gray-900/60 backdrop-blur-md shadow-lg border-b border-gray-200 dark:border-gray-700 fixed top-0 left-0 right-0 z-50"
-    >
-      <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
-        
-        {/* Logo + Title */}
-        <Link href="/dashboard">
-          <motion.div 
-            whileHover={{ scale: 1.05 }}
-            className="flex items-center gap-3 cursor-pointer"
-          >
-            <Image src={'/logo.svg'} width={40} height={40} alt={"Logo"} />
-            <h2 className="font-bold text-xl bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-              AI Room Design
-            </h2>
-          </motion.div>
+    <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        {/* Logo + wordmark */}
+        <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5">
+          <Image src="/logo.svg" width={24} height={24} alt="" />
+          <span className="text-[15px] font-semibold tracking-tight text-foreground">
+            AI Room Designer
+          </span>
         </Link>
 
-        {/* Navigation */}
-        <div className="hidden md:flex items-center space-x-6">
-          <NavLink href="/dashboard" icon={<Home size={18} />} text="Home" />
-          <NavLink href="/dashboard/create-new" icon={<PlusCircle size={18} />} text="Create New" />
-          <NavLink href="/dashboard/generate-image" icon={<ImageIcon size={18} />} text="Generate Image" />
-        </div>
+        {/* Center nav */}
+        <nav className="hidden items-center gap-1 md:flex">
+          {NAV_LINKS.map((link) => {
+            const active = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                  active
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
 
-        {/* Right Section */}
-        <div className="flex items-center gap-4">
-          {/* Credits */}
-          <motion.div 
-            whileHover={{ scale: 1.05 }}
-            className="flex items-center gap-2 bg-gradient-to-r from-purple-100 to-blue-100 dark:from-gray-800 dark:to-gray-700 px-3 py-1 rounded-full shadow-md"
-          >
-            <Image src={'/credits.svg'} width={20} height={20} alt="Credits" />
-            <h2 className="font-semibold text-gray-800 dark:text-gray-200">
-              {userDetail?.credits ?? 0}
-            </h2>
-          </motion.div>
-
-          {/* User Avatar */}
+        {/* Right section */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 rounded-full border border-border/80 bg-secondary/60 px-3 py-1 text-xs font-medium text-secondary-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <span>{userDetail?.credits ?? 0}</span>
+          </div>
           <UserButton afterSignOutUrl="/" />
         </div>
       </div>
-    </motion.div>
+    </header>
   )
-}
-
-// NavLink component with hover animation
-function NavLink({ href, icon, text }) {
-  return (
-    <Link href={href}>
-      <motion.div 
-        whileHover={{ scale: 1.05 }}
-        className="flex items-center space-x-1 text-gray-600 hover:text-purple-600 dark:text-gray-300 dark:hover:text-purple-400 transition-colors duration-200 cursor-pointer"
-      >
-        {icon}
-        <span>{text}</span>
-      </motion.div>
-    </Link>
-  );
 }
 
 export default Header

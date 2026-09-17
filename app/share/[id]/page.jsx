@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
-import Button from '@/app/components/ui/Button';
+import { Button } from '@/components/ui/button';
 
 // Public, unauthenticated route — this page must never leak a private
 // design. isPublic is only ever set true via POST /api/designs/:id/share,
@@ -53,41 +53,51 @@ export default async function SharedDesignPage({ params }) {
   if (!design) notFound();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4 sm:p-8">
-      <div className="max-w-2xl w-full">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+    <div className="min-h-screen bg-background">
+      <main className="mx-auto max-w-3xl px-4 pb-32 pt-12 sm:px-6 sm:pt-20">
+        <header className="mb-8">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            AI Room Designer
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
             {design.designType} {design.roomType}
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Created with AI Room Designer
-          </p>
+        </header>
+
+        <div className="overflow-hidden rounded-xl border border-border/70">
+          {design.originalImageUrl ? (
+            <BeforeAfterSlider
+              beforeSrc={design.originalImageUrl}
+              afterSrc={design.generatedImageUrl}
+              beforeLabel="Before"
+              afterLabel="AI Redesign"
+            />
+          ) : (
+            <div className="relative aspect-[4/3] w-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={design.generatedImageUrl}
+                alt={`${design.designType} ${design.roomType}`}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          )}
         </div>
 
-        {design.originalImageUrl ? (
-          <BeforeAfterSlider
-            beforeSrc={design.originalImageUrl}
-            afterSrc={design.generatedImageUrl}
-            beforeLabel="Before"
-            afterLabel="After"
-          />
-        ) : (
-          <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={design.generatedImageUrl}
-              alt={`${design.designType} ${design.roomType}`}
-              className="w-full h-full object-cover"
-            />
-          </div>
+        {design.originalImageUrl && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Drag the divider to compare the original room with the AI redesign.
+          </p>
         )}
+      </main>
 
-        <div className="text-center mt-8">
-          <Link href="/dashboard">
-            <Button variant="primary" size="large">
-              Design your own room
-            </Button>
-          </Link>
+      {/* Floating CTA */}
+      <div className="fixed inset-x-0 bottom-0 border-t border-border/60 bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-3xl flex-col items-center justify-between gap-3 px-4 py-4 sm:flex-row sm:px-6">
+          <p className="text-sm text-muted-foreground">Designed with AI Room Designer</p>
+          <Button asChild>
+            <Link href="/dashboard">Design your own room</Link>
+          </Button>
         </div>
       </div>
     </div>

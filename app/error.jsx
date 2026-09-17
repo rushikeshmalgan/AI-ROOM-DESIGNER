@@ -2,8 +2,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
-import Button from '@/app/components/ui/Button';
-import Card from '@/app/components/ui/Card';
+import { Button } from '@/components/ui/button';
 
 // Next.js error boundary — catches unhandled render/render-effect
 // exceptions anywhere under the root layout that aren't already caught
@@ -16,24 +15,24 @@ export default function GlobalError({ error, reset }) {
   }, [error]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-b from-white to-purple-50 dark:from-gray-900 dark:to-gray-800">
-      <Card className="max-w-md w-full p-8 text-center" shadow="lg">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-md text-center">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Something went wrong
         </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           This wasn&apos;t a lost credit or a failed generation — the page itself hit an
           unexpected error. Try again, or head back to your dashboard.
         </p>
-        <div className="flex justify-center gap-3">
+        <div className="mt-6 flex justify-center gap-3">
           <Button variant="outline" onClick={reset}>
             Try Again
           </Button>
-          <Link href="/dashboard">
-            <Button variant="primary">Go to Dashboard</Button>
-          </Link>
+          <Button asChild>
+            <Link href="/dashboard">Go to Dashboard</Link>
+          </Button>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

@@ -63,7 +63,7 @@ export default function BeforeAfterSlider({
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         draggable={false}
       />
-      <div className="absolute bottom-2 right-2 bg-purple-600/80 text-white text-xs px-2 py-1 rounded pointer-events-none">
+      <div className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-white backdrop-blur-sm">
         {afterLabel}
       </div>
 
@@ -79,7 +79,7 @@ export default function BeforeAfterSlider({
         draggable={false}
       />
       {position > 15 && (
-        <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded pointer-events-none">
+        <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-white backdrop-blur-sm">
           {beforeLabel}
         </div>
       )}
@@ -93,11 +93,11 @@ export default function BeforeAfterSlider({
         aria-valuemax={100}
         aria-valuenow={Math.round(position)}
         onKeyDown={onKeyDown}
-        className="absolute top-0 bottom-0 w-1 bg-white/90 shadow-md cursor-ew-resize focus:outline-none focus:ring-2 focus:ring-purple-500"
-        style={{ left: `calc(${position}% - 2px)` }}
+        className="absolute bottom-0 top-0 w-0.5 cursor-ew-resize bg-white/90 shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        style={{ left: `calc(${position}% - 1px)` }}
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <div className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7l-4 5 4 5M16 7l4 5-4 5" />
           </svg>
         </div>

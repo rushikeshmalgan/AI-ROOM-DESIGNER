@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 
 const STAGES = [
-  'Preparing your room...',
-  'Applying your design preferences...',
-  'Generating your redesign...',
-  'Finishing touches...',
+  'Analyzing room composition',
+  'Applying design direction',
+  'Rendering your concept',
+  'Finishing touches',
 ];
 
 // Purely time-based captions, not a fake percentage bar — there's no
@@ -33,9 +32,31 @@ export default function GenerationStages({ active, className = '' }) {
   if (!active) return null;
 
   return (
-    <div className={`flex flex-col items-center gap-3 text-center ${className}`}>
-      <Loader2 className="h-8 w-8 text-purple-500 animate-spin" />
-      <p className="text-sm text-gray-600 dark:text-gray-400">{STAGES[stageIndex]}</p>
+    <div className={`rounded-lg border border-border/70 bg-secondary/40 p-4 ${className}`}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+        Designing your space
+      </p>
+      <ul className="mt-3 space-y-2">
+        {STAGES.map((stage, index) => {
+          const done = index < stageIndex;
+          const current = index === stageIndex;
+          return (
+            <li
+              key={stage}
+              className={`flex items-center gap-2.5 text-sm transition-colors duration-300 ${
+                current ? 'text-foreground' : done ? 'text-muted-foreground' : 'text-muted-foreground/50'
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  current ? 'animate-pulse bg-primary' : done ? 'bg-muted-foreground' : 'bg-border'
+                }`}
+              />
+              {stage}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

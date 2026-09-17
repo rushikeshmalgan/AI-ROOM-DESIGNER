@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, ArrowRight, Lightbulb } from 'lucide-react';
-import Card from '@/app/components/ui/Card';
-import Button from '@/app/components/ui/Button';
-import LoadingSpinner from '@/app/components/ui/LoadingSpinner';
+import { ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 
 const designStyles = [
@@ -171,108 +170,74 @@ function DesignRecommendations({ userDesigns = [] }) {
   };
 
   return (
-    <Card className="p-6 mt-8">
-      <div className="flex items-center justify-between mb-6">
-        <motion.div 
-          className="flex items-center gap-2"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Sparkles className="h-5 w-5 text-purple-500" />
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white">Design Recommendations</h2>
-        </motion.div>
-        
-        <motion.div 
-          className="flex gap-2"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-        >
-          <Button 
-            variant={activeTab === 'personalized' ? 'primary' : 'outline'}
-            size="small"
+    <section>
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            Recommended for you
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {activeTab === 'personalized'
+              ? 'Based on the rooms and styles you have designed so far.'
+              : 'Popular design styles across the app.'}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 gap-1">
+          <Button
+            variant={activeTab === 'personalized' ? 'secondary' : 'ghost'}
+            size="sm"
             onClick={() => handleTabChange('personalized')}
-            className="text-xs"
           >
-            Personalized
+            For you
           </Button>
-          <Button 
-            variant={activeTab === 'trending' ? 'primary' : 'outline'}
-            size="small"
+          <Button
+            variant={activeTab === 'trending' ? 'secondary' : 'ghost'}
+            size="sm"
             onClick={() => handleTabChange('trending')}
-            className="text-xs"
           >
             Trending
           </Button>
-        </motion.div>
+        </div>
       </div>
-      
+
       {loading ? (
-        <div className="flex justify-center items-center h-40">
-          <LoadingSpinner size="medium" text="Generating recommendations..." />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="aspect-[4/3] w-full rounded-xl" />
+          ))}
         </div>
       ) : (
-        <motion.div 
-          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        <motion.div
+          className="grid grid-cols-1 gap-4 md:grid-cols-3"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
-          {recommendations.map((style, index) => (
-            <motion.div 
-              key={style.name} 
-              variants={itemVariants}
-              className="relative overflow-hidden rounded-lg group"
-            >
-              <div 
-                className="h-40 bg-cover bg-center" 
-                style={{ backgroundImage: `url(${style.image})` }}
+          {recommendations.map((style) => (
+            <motion.div key={style.name} variants={itemVariants}>
+              <Link
+                href={`/dashboard/create-new?style=${style.name.toLowerCase()}`}
+                className="group relative block aspect-[4/3] overflow-hidden rounded-xl border border-border/70"
               >
-                <div className="absolute inset-0 bg-black bg-opacity-40 group-hover:bg-opacity-30 transition-all duration-300"></div>
-                <div className="absolute inset-0 p-4 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-white font-bold text-lg">{style.name}</h3>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {style.tags.slice(0, 2).map(tag => (
-                        <span 
-                          key={tag} 
-                          className="text-xs bg-white bg-opacity-20 text-white px-2 py-0.5 rounded-full"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <Link 
-                    href={`/dashboard/create-new?style=${style.name.toLowerCase()}`}
-                    className="flex items-center gap-1 text-white text-sm font-medium group-hover:underline"
-                  >
+                <div
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                  style={{ backgroundImage: `url(${style.image})` }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-4">
+                  <h3 className="text-sm font-medium text-white">{style.name}</h3>
+                  <span className="flex shrink-0 items-center gap-1 text-xs text-white/80 transition-colors duration-200 group-hover:text-white">
                     Try this style
                     <ArrowRight className="h-3 w-3" />
-                  </Link>
+                  </span>
                 </div>
-              </div>
+              </Link>
             </motion.div>
           ))}
         </motion.div>
       )}
-      
-      <motion.div 
-        className="mt-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5, duration: 0.5 }}
-      >
-        <Lightbulb className="h-4 w-4 text-yellow-500" />
-        <p>
-          {activeTab === 'personalized' 
-            ? 'Recommendations based on your previous designs and preferences.'
-            : 'Currently trending design styles among our users.'}
-        </p>
-      </motion.div>
-    </Card>
+    </section>
   );
 }
 

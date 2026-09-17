@@ -1,9 +1,8 @@
 "use client";
 import React, { useRef, useState } from "react";
 import axios from "axios";
-import { motion } from "framer-motion";
-import Card from "@/app/components/ui/Card";
-import LoadingSpinner from "@/app/components/ui/LoadingSpinner";
+import { ImagePlus, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { resizeImageIfNeeded } from "@/lib/clientImage";
 import { track } from "@/lib/analyticsClient";
 
@@ -52,47 +51,42 @@ function ImageSelection({ selectedImage }) {
   };
 
   return (
-    <motion.div
-      className="flex items-center justify-center"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <Card className="flex flex-col items-center w-full p-6" hover>
-        <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1 text-center text-md">
-          1. Select an Image of Your Room
-        </label>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 text-center max-w-sm">
-          For the best results, use a well-lit photo taken from a corner that shows most of the room.
-        </p>
-        <label
-          htmlFor="upload-image"
-          className={`w-full ${uploading ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
-        >
-          <div className="relative flex items-center justify-center w-full h-64 border-2 border-dashed border-purple-300 dark:border-purple-600 rounded-lg bg-purple-50 dark:bg-gray-700 hover:bg-purple-100 dark:hover:bg-gray-600 overflow-hidden transition-colors">
-            {uploading ? (
-              <LoadingSpinner size="medium" text="Uploading..." />
-            ) : preview ? (
-              <img src={preview} alt="Room preview" className="w-full h-full object-cover" />
-            ) : (
-              <div className="text-center">
-                <img src="/uploadimage.svg" alt="Upload Icon" className="w-16 h-16 mx-auto mb-2" />
-                <p className="text-gray-600 dark:text-gray-300">Click to upload</p>
-              </div>
-            )}
+    <div className="flex h-full flex-col">
+      <label
+        htmlFor="upload-image"
+        className={cn(
+          "group relative flex min-h-[320px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-secondary/40 transition-colors duration-200 lg:min-h-[480px]",
+          uploading ? "cursor-not-allowed" : "cursor-pointer hover:border-border"
+        )}
+      >
+        {uploading ? (
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Uploading your room…</p>
           </div>
-        </label>
-        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          id="upload-image"
-          className="hidden"
-          disabled={uploading}
-          onChange={onFileSelected}
-        />
-      </Card>
-    </motion.div>
+        ) : preview ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={preview} alt="Room preview" className="h-full w-full object-contain" />
+        ) : (
+          <div className="px-6 text-center">
+            <ImagePlus className="mx-auto h-7 w-7 text-muted-foreground" strokeWidth={1.5} />
+            <p className="mt-3 text-sm font-medium text-foreground">Upload a photo of your room</p>
+            <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
+              For the best results, use a well-lit photo taken from a corner that shows most of the room.
+            </p>
+          </div>
+        )}
+      </label>
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        id="upload-image"
+        className="hidden"
+        disabled={uploading}
+        onChange={onFileSelected}
+      />
+    </div>
   );
 }
 

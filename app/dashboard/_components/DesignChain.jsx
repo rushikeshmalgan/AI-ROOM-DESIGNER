@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Download, Share2, Sparkles, Loader2, CornerDownRight } from 'lucide-react';
-import Card from '@/app/components/ui/Card';
-import Button from '@/app/components/ui/Button';
+import { Download, Share2, Sparkles, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
 import GenerationFeedback from '@/app/components/ui/GenerationFeedback';
 import RefinementQualityFeedback from '@/app/components/ui/RefinementQualityFeedback';
@@ -20,12 +20,8 @@ const SUGGESTED_REFINEMENTS = [
 
 const MAX_INSTRUCTION_LENGTH = 300;
 
-function formatDate(value) {
-  return new Date(value).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+function versionLabel(index) {
+  return index === 0 ? 'Original' : `Refinement ${index}`;
 }
 
 // Renders one version chain (an original generation plus any
@@ -119,60 +115,72 @@ function DesignChain({ chain, onRefined }) {
   };
 
   return (
-    <Card className="overflow-hidden" hover shadow="lg" padding="none" data-testid={`design-chain-${root.id}`}>
-      <div className="p-3 sm:p-4 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between sm:items-center gap-1">
-        <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200">
-          {root.roomType} · {root.designType} style
-          {chain.length > 1 && (
-            <span className="ml-2 text-xs font-normal text-purple-500">
-              {chain.length} versions
-            </span>
-          )}
+    <div
+      className="overflow-hidden rounded-xl border border-border/70 bg-card transition-colors duration-200 hover:border-border"
+      data-testid={`design-chain-${root.id}`}
+    >
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <h3 className="text-sm font-medium text-foreground">
+          {root.roomType} <span className="text-muted-foreground">· {root.designType} style</span>
         </h3>
-        <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(root.createdAt)}</span>
+        {chain.length > 1 && (
+          <Badge variant="secondary" className="shrink-0 font-normal">
+            {chain.length} versions
+          </Badge>
+        )}
       </div>
 
-      <div className="p-3 sm:p-4 space-y-4">
+      <div className="space-y-5 px-4 pb-4">
         {chain.map((design, index) => {
           const parent = index === 0 ? null : chain[index - 1];
           return (
             <div key={design.id}>
-              {parent && (
-                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-2 pl-1">
-                  <CornerDownRight className="h-3.5 w-3.5 text-purple-400 shrink-0" />
-                  <span className="italic">&ldquo;{design.additionalRequirements}&rdquo;</span>
-                </div>
-              )}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {versionLabel(index)}
+                </span>
+                {parent && (
+                  <span className="truncate text-xs italic text-muted-foreground">
+                    &ldquo;{design.additionalRequirements}&rdquo;
+                  </span>
+                )}
+              </div>
               <BeforeAfterSlider
                 beforeSrc={parent ? parent.generatedImageUrl : design.originalImageUrl}
                 afterSrc={design.generatedImageUrl}
                 beforeLabel={parent ? 'Previous' : 'Before'}
                 afterLabel={parent ? 'This version' : 'After'}
               />
-              <div className="flex flex-wrap justify-between gap-2 mt-2">
+              <div className="mt-2 flex items-center justify-end gap-1">
                 <Button
-                  variant="outline"
-                  size="small"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs text-muted-foreground"
                   onClick={() => {
                     track('design_saved', { designId: design.id });
                     window.open(design.generatedImageUrl, '_blank');
                   }}
-                  icon={<Download className="h-4 w-4" />}
                 >
+                  <Download className="h-3.5 w-3.5" />
                   Save
                 </Button>
                 <Button
-                  variant="outline"
-                  size="small"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs text-muted-foreground"
                   onClick={() => handleShare(design)}
                   disabled={sharingId === design.id}
-                  icon={sharingId === design.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
                 >
+                  {sharingId === design.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Share2 className="h-3.5 w-3.5" />
+                  )}
                   {sharingId === design.id ? 'Sharing...' : 'Share'}
                 </Button>
               </div>
               {shareError?.designId === design.id && (
-                <p className="mt-1 text-xs text-red-500">{shareError.message}</p>
+                <p className="mt-1 text-xs text-destructive">{shareError.message}</p>
               )}
               {parent ? (
                 <RefinementQualityFeedback designId={design.id} />
@@ -183,19 +191,19 @@ function DesignChain({ chain, onRefined }) {
           );
         })}
 
-        <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
-          <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            <Sparkles className="h-4 w-4 text-purple-500" />
+        <div className="border-t border-border/60 pt-4">
+          <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
             What would you like to change?
           </label>
-          <div className="flex flex-wrap gap-2 mb-2">
+          <div className="mb-2 flex flex-wrap gap-1.5">
             {SUGGESTED_REFINEMENTS.map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"
                 disabled={refining}
                 onClick={() => { setInstruction(suggestion); setError(''); }}
-                className="text-xs px-2.5 py-1 rounded-full border border-purple-200 text-purple-600 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-full border border-border/80 px-2.5 py-1 text-xs text-muted-foreground transition-colors duration-200 hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {suggestion}
               </button>
@@ -209,23 +217,23 @@ function DesignChain({ chain, onRefined }) {
               placeholder="e.g., Change the sofa to a beige sectional"
               disabled={refining}
               maxLength={MAX_INSTRUCTION_LENGTH}
-              className="flex-1 min-w-0 p-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-800 dark:text-white disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
             />
             <Button
               onClick={handleRefine}
               disabled={refining || !instruction.trim()}
-              size="small"
-              icon={refining ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
+              size="sm"
             >
+              {refining && <Loader2 className="h-4 w-4 animate-spin" />}
               {refining ? 'Refining...' : 'Refine Design'}
             </Button>
           </div>
           {error && (
-            <p className="mt-2 text-sm text-red-500">{error}</p>
+            <p className="mt-2 text-sm text-destructive">{error}</p>
           )}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 

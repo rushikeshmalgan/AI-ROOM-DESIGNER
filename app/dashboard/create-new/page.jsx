@@ -6,10 +6,10 @@ import ImageSelection from "./_components/ImageSelection";
 import RoomType from "./_components/RoomType";
 import DesignType from "./_components/DesignType";
 import AdditionalReq from "./_components/AdditionalReq";
-import { Loader2, Wand2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import { motion } from "framer-motion";
-import Button from "@/app/components/ui/Button";
-import Card from "@/app/components/ui/Card";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import GenerationStages from "@/app/components/ui/GenerationStages";
 import { track } from "@/lib/analyticsClient";
 
@@ -87,131 +87,85 @@ function CreateNew() {
     }
   };
 
-  // Animation variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        delayChildren: 0.2,
-        staggerChildren: 0.1
-      }
-    }
-  };
-
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: {
-      y: 0,
-      opacity: 1,
-      transition: { duration: 0.5 }
-    }
-  };
-
   return (
-    <motion.div 
-      className="min-h-screen flex flex-col items-center justify-start p-4 sm:p-6 lg:p-8"
-      initial="hidden"
-      animate="visible"
-      variants={containerVariants}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
     >
-      <motion.h2
-        className="text-3xl font-extrabold text-purple-700 dark:text-purple-400 tracking-tight mb-3 sm:mb-4 text-center"
-        variants={itemVariants}
-      >
-        Redesign your room, then keep refining it
-      </motion.h2>
-      <motion.p
-        className="text-base text-gray-600 dark:text-gray-300 text-center max-w-xl mb-8 sm:mb-10"
-        variants={itemVariants}
-      >
-        Upload your room, pick a style, and generate a first design. Not quite right?
-        Just describe what to change — the sofa, the wall color, the lighting — and get
-        a new version without losing what you already have.
-      </motion.p>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Redesign your room
+        </h1>
+        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
+          Upload your room, pick a style, and generate a first design. Not quite right?
+          Describe what to change and keep refining it.
+        </p>
+      </div>
 
-      <Card className="w-full max-w-5xl p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8" shadow="lg">
-        {/* Left Column - Image Selection */}
-        <motion.div 
-          className="flex flex-col space-y-6"
-          variants={itemVariants}
-        >
-          <ImageSelection
-            selectedImage={(value) => onHandInputChange(value, "image")}
-          />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8">
+        {/* Canvas */}
+        <ImageSelection selectedImage={(value) => onHandInputChange(value, "image")} />
+
+        {/* Controls */}
+        <div className="flex flex-col gap-6 rounded-xl border border-border/70 bg-card p-5 lg:h-fit">
+          <RoomType selectedRoomType={(value) => onHandInputChange(value, "roomType")} />
+
+          <DesignType selectedDesignType={(value) => onHandInputChange(value, "designType")} />
+
           <AdditionalReq
             additionalRequirementInput={(value) =>
               onHandInputChange(value, "additionalRequirements")
             }
           />
-        </motion.div>
 
-        {/* Right Column - Form Inputs */}
-        <motion.div 
-          className="flex flex-col space-y-6"
-          variants={itemVariants}
-        >
-          <RoomType
-            selectedRoomType={(value) => onHandInputChange(value, "roomType")}
-          />
-          <DesignType
-            selectedDesignType={(value) =>
-              onHandInputChange(value, "designType")
-            }
-          />
-          <motion.div
-            whileHover={{ scale: isGenerating ? 1 : 1.02 }}
-            whileTap={{ scale: isGenerating ? 1 : 0.98 }}
-          >
+          <Separator />
+
+          <div>
             <Button
-              className="w-full mt-4"
+              className="w-full gap-2"
+              size="lg"
               onClick={handleGenerate}
               disabled={isGenerating}
-              variant="primary"
-              size="large"
-              icon={isGenerating ? null : <Wand2 className="h-4 w-4" />}
             >
+              {!isGenerating && <Wand2 className="h-4 w-4" />}
               {isGenerating ? "Generating..." : "Generate Design"}
             </Button>
-          </motion.div>
+            <p className="mt-2.5 text-center text-xs text-muted-foreground">
+              Uses 1 credit
+            </p>
+          </div>
 
-          {isGenerating && <GenerationStages active className="mt-4" />}
+          {isGenerating && <GenerationStages active />}
 
           {error && !isGenerating && (
             <motion.div
-              className="mt-3 p-3 rounded-md border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-3"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: 0.25 }}
             >
-              <p className="text-red-600 dark:text-red-400 text-sm">
+              <p className="text-sm font-medium text-foreground">
                 We couldn&apos;t generate this design.
               </p>
               {creditSafe && (
-                <p className="text-red-500 dark:text-red-400 text-xs mt-1">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Your credit wasn&apos;t charged.
                 </p>
               )}
-              <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{error}</p>
-              <div className="flex gap-2 mt-2">
-                <Button variant="outline" size="small" onClick={handleGenerate}>
+              <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+              <div className="mt-2.5 flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleGenerate}>
                   Try Again
                 </Button>
-                <Button variant="ghost" size="small" onClick={() => router.push("/dashboard")}>
+                <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard")}>
                   Go Back
                 </Button>
               </div>
             </motion.div>
           )}
-
-          <motion.p
-            className="text-gray-500 text-sm text-center mt-2"
-            variants={itemVariants}
-          >
-            NOTE: One credit will be used to redesign your room
-          </motion.p>
-        </motion.div>
-      </Card>
+        </div>
+      </div>
     </motion.div>
   );
 }

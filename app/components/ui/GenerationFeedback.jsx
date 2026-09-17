@@ -59,10 +59,10 @@ export default function GenerationFeedback({ designId }) {
   if (answered) return null;
 
   return (
-    <div className="mt-2 p-2.5 rounded-md bg-purple-50 dark:bg-gray-800 border border-purple-100 dark:border-gray-700">
+    <div className="mt-2 rounded-md border border-border/70 bg-secondary/40 p-2.5">
       {!rating ? (
         <>
-          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          <p className="mb-1.5 text-xs font-medium text-foreground">
             How close was this to what you wanted?
           </p>
           <div className="flex gap-3">
@@ -81,7 +81,7 @@ export default function GenerationFeedback({ designId }) {
         </>
       ) : (
         <>
-          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          <p className="mb-1.5 text-xs font-medium text-foreground">
             What should be better?
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -90,7 +90,7 @@ export default function GenerationFeedback({ designId }) {
                 key={category}
                 type="button"
                 onClick={() => handleCategory(category)}
-                className="text-xs px-2 py-1 rounded-full border border-purple-200 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-gray-700"
+                className="rounded-full border border-border/80 px-2 py-1 text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
               >
                 {category}
               </button>

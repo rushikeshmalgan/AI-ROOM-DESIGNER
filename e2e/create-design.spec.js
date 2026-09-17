@@ -25,7 +25,7 @@ test.describe('Create a design', () => {
 
     // Result: redirected to the dashboard with the new design visible
     await page.waitForURL('**/dashboard');
-    await expect(page.getByRole('heading', { name: /your designs/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /good (morning|afternoon|evening)/i })).toBeVisible();
     await expect(page.getByText(/living room.*modern style/i)).toBeVisible();
   });
 

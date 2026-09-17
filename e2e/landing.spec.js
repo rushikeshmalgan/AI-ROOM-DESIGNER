@@ -8,7 +8,7 @@ test.describe('Landing page', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    const getStarted = page.getByRole('link', { name: /get started/i });
+    const getStarted = page.getByRole('link', { name: /start designing/i });
     await expect(getStarted).toBeVisible();
     await expect(getStarted).toHaveAttribute('href', '/dashboard');
   });

@@ -50,23 +50,23 @@ export default function RefinementQualityFeedback({ designId }) {
 
   if (submitted) {
     return (
-      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 italic">Thanks — that helps.</p>
+      <p className="mt-2 text-xs italic text-muted-foreground">Thanks — that helps.</p>
     );
   }
 
   return (
-    <div className="mt-2 p-2.5 rounded-md bg-purple-50 dark:bg-gray-800 border border-purple-100 dark:border-gray-700">
-      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+    <div className="mt-2 rounded-md border border-border/70 bg-secondary/40 p-2.5">
+      <p className="mb-1.5 text-xs font-medium text-foreground">
         How did this refinement go?
       </p>
-      <div className="flex flex-col gap-1 mb-2">
+      <div className="mb-2 flex flex-col gap-1">
         {OPTIONS.map((option) => (
-          <label key={option.key} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+          <label key={option.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={Boolean(selected[option.key])}
               onChange={() => toggle(option.key)}
-              className="rounded border-gray-300"
+              className="rounded border-input accent-primary"
             />
             {option.label}
           </label>
@@ -76,7 +76,7 @@ export default function RefinementQualityFeedback({ designId }) {
         type="button"
         onClick={handleSubmit}
         disabled={Object.keys(selected).length === 0}
-        className="text-xs px-2.5 py-1 rounded-full bg-purple-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-purple-700"
+        className="rounded-full bg-primary px-2.5 py-1 text-xs text-primary-foreground transition-opacity duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
         Submit
       </button>

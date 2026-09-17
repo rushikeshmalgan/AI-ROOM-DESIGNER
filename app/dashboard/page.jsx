@@ -2,11 +2,21 @@
 
 import React, { useState, useEffect } from 'react'
 import { useUser } from '@clerk/nextjs'
+import Link from 'next/link'
+import { Plus } from 'lucide-react'
 import Listing from './_components/Listing'
 import DesignRecommendations from './_components/DesignRecommendations'
+import { Button } from '@/components/ui/button'
 import { motion } from 'framer-motion'
 import axios from 'axios'
 import { track } from '@/lib/analyticsClient'
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 function Dashboard() {
   const { user } = useUser();
@@ -44,29 +54,41 @@ function Dashboard() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <motion.h1
-        className="text-3xl font-bold mb-8 text-gray-800 dark:text-white"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.5 }}
+    <div>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
       >
-        Your Designs
-      </motion.h1>
-      <Listing
-        designs={userDesigns}
-        loading={loading}
-        error={error}
-        onRefined={handleRefined}
-      />
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            {greeting()}{user?.firstName ? `, ${user.firstName}` : ''}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">Your design workspace</p>
+        </div>
+        <Button asChild size="lg" className="gap-2">
+          <Link href="/dashboard/create-new">
+            <Plus className="h-4 w-4" />
+            Redesign Room
+          </Link>
+        </Button>
+      </motion.div>
+
+      <div className="mt-10">
+        <Listing
+          designs={userDesigns}
+          loading={loading}
+          error={error}
+          onRefined={handleRefined}
+        />
+      </div>
 
       {/* Design recommendations (deterministic, not AI-driven) */}
-      <DesignRecommendations userDesigns={userDesigns} />
-    </motion.div>
+      <div className="mt-14">
+        <DesignRecommendations userDesigns={userDesigns} />
+      </div>
+    </div>
   )
 }
 
