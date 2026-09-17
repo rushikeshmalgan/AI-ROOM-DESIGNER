@@ -1,64 +1,33 @@
-# AI Room Designer
+# AI Room Design
 
-## What this is / why I built it
+## What this is
 
-I built this to learn how to chain multiple AI providers around a real user workflow rather than just calling one model in isolation. The core idea is straightforward: a user uploads a photo of their room, picks a style, and gets back a redesigned version. Under the hood that requires a Cloudinary upload pipeline, a Replicate SDXL image-to-image call that actually preserves room geometry while restyling it, a Drizzle/Neon database write, and a Clerk-gated API layer tying it together.
+Upload a photo of your room, pick a style, and get back a redesigned version — then keep iterating on it. Say "change the sofa to a beige sectional" or "make the walls warmer" against a design you already have, and get a new version linked back to the one before it, without losing the room you started with. That refinement loop — not the one-shot generation — is the actual point of this project: most AI redesign tools give you a single result and stop; this one treats a design as something you converge on, not something you get right in one try.
 
-There is also a second generation path — Ideogram via Replicate — that I added specifically because it solves a different problem: generating a room image from a text prompt alone, with no input photo. The two providers are not redundant; they cover different user intents, and keeping them in the same codebase forced me to think clearly about what each model is actually good for.
+There is also a separate text-to-image path (Ideogram via Replicate) for generating a room concept from a written description alone, with no starting photo — a different intent from redesigning a real room, so it stays a separate flow rather than being forced into the same one.
 
-The stack is Next.js 15 App Router, React 19, Neon serverless Postgres with Drizzle ORM, Clerk for auth, Cloudinary for image storage, and Replicate as the inference host for both AI models.
-
----
-
-## Technical highlights
-
-### Dual AI provider setup — what each one actually does
-
-**Replicate SDXL (primary path — `app/api/generate-design`)**
-
-This route accepts an existing room photo URL alongside `roomType` and `designType` parameters. It calls `stability-ai/sdxl` via `replicate.run()` with `image: imageUrl` as input — this is the image-to-image mode. SDXL takes the input image as a structural reference and uses `strength: 0.8` to balance between keeping the room's geometry (walls, windows, furniture footprint) and applying the requested style. The prompt is constructed server-side: `"A professional interior design for a {roomType} in {designStyle} style."` The result is a URL to the generated image, which is then persisted to the `designs` table.
-
-This is the primary path because most users arrive with a real room they want to see redesigned, and image-to-image is the right tool — it doesn't hallucinate a completely different floor plan.
-
-**Ideogram via Replicate (secondary path — `app/api/generate-image`)**
-
-This route accepts only a `prompt`, `style`, and `aspectRatio`. It calls `ideogram-ai/ideogram-v3-turbo` with no input image. There is no `imageUrl` in scope and no DB write to the `designs` table — the generated URL is returned to the client directly. This path is for users who want to explore what a space *could* look like from scratch, rather than redesign an existing room. Because it's purely prompt-driven, it's also used for the separate "Generate Image" dashboard page.
-
-The distinction is not about provider preference — it's about capability: SDXL image-to-image needs a source photo; Ideogram text-to-image does not.
+The stack is Next.js 15 App Router, React 19, Neon serverless Postgres with Drizzle ORM, Clerk for auth, Cloudinary for image storage, Upstash Redis for credits/rate-limiting, and Replicate as the inference host for both AI models.
 
 ---
 
-### Schema and data relationships
+## Key feature: iterative design refinement
 
-Two tables, both declared in `config/schema.js`:
+`POST /api/designs/:id/refine` takes a short instruction ("change the sofa") against an existing design and produces a new one, linked to it via a self-referencing `parentDesignId` column on `designs`. A design's history is just an ordered chain — original → v1 → v2 — not a tree editor; the dashboard renders each chain as a simple vertical sequence, comparing each version to the one right before it.
 
-**`users`** — `id` (serial PK), `name`, `email`, `imageUrl` (all `varchar`, `.notNull()`), `credits` (`integer`, `.default(3)`, nullable — no `.notNull()`).
+A refinement always regenerates from the **previous generation's image**, not the original photo, so "change the sofa" doesn't also silently undo an earlier "warmer walls" change. The prompt sent to SDXL is built explicitly around three things: the established style, the one requested change, and an explicit list of what to preserve (architecture, walls, windows, doors, camera perspective, existing furniture and colors except what was asked to change).
 
-**`designs`** — `id` (serial PK), `userId` (`varchar(256)`, `.notNull()`), `originalImageUrl`, `generatedImageUrl`, `roomType`, `designType` (all `varchar`, `.notNull()`), `additionalRequirements` (`text`, nullable), `createdAt` (`timestamp`, `.defaultNow()`).
+Initial generation and refinement use different SDXL parameters, on purpose:
 
-`designs.userId` stores the Clerk user ID as a `varchar`. There is **no database-level foreign key** between `designs.userId` and `users.id`. The join is enforced only in application code — when a design is saved, `user.id` is taken from the Clerk session and written directly. I made this trade-off deliberately: Clerk IDs are the authoritative source of identity, so the application layer is the right place to enforce the join rather than adding a DB-level constraint that would require keeping the two tables in sync with Clerk's webhooks. The downside is that if a user row is deleted without cascading, orphaned design rows will remain.
+| | `strength` | `guidance_scale` | why |
+|---|---|---|---|
+| Initial generation | 0.8 | 7.5 | needs room to transform a real photo into a styled room |
+| Refinement | 0.5 | 8.5 | should change less of an already-styled image; lower strength needs higher guidance so the one requested change still comes through instead of being smoothed away |
 
----
-
-### Clerk auth flow
-
-`middleware.js` protects all routes under `/dashboard(.*)` using Clerk's `clerkMiddleware` and `createRouteMatcher`. Every API route that touches user data calls `currentUser()` from `@clerk/nextjs/server` as its first step and returns a 401 if the result is null.
-
-The `verify-user` route (`app/api/verify-user/route.jsx`) handles the one-time identity sync: on first login it calls `currentUser()`, checks whether the user's email already exists in the `users` table, and inserts a new row if not. Subsequent calls return the existing row. This means the `users` table is a local cache of Clerk identity data (name, email, avatar URL) plus the credits counter — it is not the source of truth for authentication.
+**Honest caveat:** SDXL image-to-image has no masking or inpainting — there is no way to say "only touch this region." Lower strength biases the model toward smaller, more targeted changes, but it cannot *guarantee* that only the requested object changes. Product copy says "Refine this design," never "guaranteed to change only one thing." The natural next step, if this turns out to matter in practice, is segmentation/masking so a refinement can be scoped to an actual region instead of the whole frame — worth building once there's evidence of where prompt-only refinement actually fails, not before.
 
 ---
 
-### Cloudinary's role
-
-Cloudinary handles the upload and storage of the original room photo before any AI generation happens. The `upload-image` route (`app/api/upload-image/route.js`) receives a `multipart/form-data` request, converts the file to a base64 data URI, and calls `cloudinary.uploader.upload()` with `folder: 'ai-room-design'`. It returns a `secure_url` that the client then passes to `generate-design` as the `imageUrl` parameter.
-
-Cloudinary is storage/delivery only — it does not do any image transformation in this project. The generated image URL that comes back from Replicate is stored directly (as a Replicate CDN URL); it is not re-uploaded to Cloudinary.
-
----
-
-## Architecture diagram
-
-The flow below traces a full design generation request, from room photo to generated result, as implemented in the actual route handlers.
+## Architecture
 
 ```mermaid
 sequenceDiagram
@@ -66,40 +35,63 @@ sequenceDiagram
     participant UploadRoute as /api/upload-image
     participant Cloudinary
     participant GenerateRoute as /api/generate-design
+    participant RefineRoute as /api/designs/:id/refine
     participant Clerk
     participant Replicate as Replicate (SDXL)
     participant DB as Neon/Drizzle
+    participant Redis as Upstash Redis
 
-    Client->>UploadRoute: POST /api/upload-image (multipart form, room photo)
-    UploadRoute->>Cloudinary: cloudinary.uploader.upload(base64 dataURI, folder: 'ai-room-design')
-    Cloudinary-->>UploadRoute: { secure_url, public_id }
-    UploadRoute-->>Client: { success: true, imageUrl: secure_url }
+    Client->>UploadRoute: POST (multipart form, room photo — resized client-side first)
+    UploadRoute->>Cloudinary: cloudinary.uploader.upload(...)
+    Cloudinary-->>UploadRoute: { secure_url }
+    UploadRoute-->>Client: { imageUrl }
 
-    Client->>GenerateRoute: POST /api/generate-design { imageUrl, roomType, designType }
+    Client->>GenerateRoute: POST { imageUrl, roomType, designType }
     GenerateRoute->>Clerk: currentUser()
-    Clerk-->>GenerateRoute: user object (or null → 401)
-    GenerateRoute->>Replicate: replicate.run('stability-ai/sdxl', { image: imageUrl, prompt, strength: 0.8 })
-    Replicate-->>GenerateRoute: [generatedImageUrl]
-    GenerateRoute->>DB: db.insert(designs).values({ userId, originalImageUrl, generatedImageUrl, roomType, designType }).returning()
-    DB-->>GenerateRoute: saved design row
-    GenerateRoute-->>Client: { success: true, design, generatedImageUrl }
+    GenerateRoute->>Redis: rate limit + atomic credit decrement
+    GenerateRoute->>Replicate: run(SDXL, strength 0.8)
+    Replicate-->>GenerateRoute: generated image URL
+    GenerateRoute->>DB: insert design (parentDesignId: null)
+    GenerateRoute-->>Client: { design, generatedImageUrl }
+
+    Client->>RefineRoute: POST /api/designs/:id/refine { instruction }
+    RefineRoute->>DB: look up parent design, verify ownership
+    RefineRoute->>Redis: rate limit + atomic credit decrement
+    RefineRoute->>Replicate: run(SDXL, source = parent's image, strength 0.5)
+    Replicate-->>RefineRoute: refined image URL
+    RefineRoute->>DB: insert design (parentDesignId: parent.id)
+    RefineRoute-->>Client: { design, generatedImageUrl, parentDesignId }
 ```
+
+If either Replicate call fails or returns nothing, the route calls `refundCredit()` (an atomic Redis `INCR`) before responding — a failed generation never costs the user a credit. Both routes validate the request body **before** touching credits at all, so a 400/401/402/429 never does either.
+
+### Schema and data relationships
+
+**`users`** — `id` (serial PK), `name`, `email` (`.unique()`), `imageUrl`, `credits` (`.default(3)`), `clerkId` (`.unique()`).
+
+**`designs`** — `id` (serial PK), `userId` (Clerk ID, FK → `users.clerkId`, `ON DELETE CASCADE`), `originalImageUrl`, `generatedImageUrl`, `roomType`, `designType`, `additionalRequirements`, `createdAt`, `parentDesignId` (nullable, self-referencing FK → `designs.id`, `ON DELETE SET NULL`, indexed).
+
+`originalImageUrl` is carried forward unchanged through an entire refinement chain, so a v3 design can still be compared back to the actual starting photo, not just its immediate parent.
+
+### Auth flow
+
+`middleware.js` protects `/dashboard(.*)` via Clerk's `clerkMiddleware`. Every API route that touches user data calls `currentUser()` first and 401s on null. User provisioning is idempotent and race-safe: both the Clerk webhook (`user.created`) and a client-triggered fallback call the same `upsertUserFromClerk()`, which uses `INSERT ... ON CONFLICT DO NOTHING` — whichever caller wins the race gets the inserted row back, the other falls through to a `SELECT` for the same row. Neither path throws.
+
+### Credits and rate limiting
+
+Both generation routes and the refine route share one Redis-backed gate: a sliding-window rate limiter (10 req/min per user via `@upstash/ratelimit`) and an atomic Lua check-and-decrement for credits (`credits:{userId}` in Redis). Postgres `users.credits` is a display-only mirror, updated best-effort after a successful generation — Redis is the source of truth enforcement runs against.
 
 ---
 
 ## Honest limitations
 
-- **Redis-backed credits enforcement (implemented).** Both `app/api/generate-design/route.ts` and `app/api/generate-image/route.ts` now enforce credits via Redis before calling Replicate/Ideogram. The flow: atomic Lua check-and-decrement in Redis (`credits:{userId}`), 402 on exhausted, 429 on rate limit (10 req/min sliding window via `@upstash/ratelimit`). Redis is seeded with Postgres `default(3)` on first read. Postgres `users.credits` remains the display source; an async best-effort `syncCreditsToDb` writes back after successful generation. Requires `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` env vars.
-
-- **No database-level foreign key between `designs.userId` and `users.id`.** Documented above under Schema. If a `users` row is deleted, the associated `designs` rows will remain with no referential integrity check at the DB layer.
-
-- **Hardcoded database credentials in `drizzle.config.js`.** The Neon connection string, including the password, is committed directly to the repository. The credentials must be rotated and the string must be replaced with `process.env.DATABASE_URL`. The commit history also needs to be scrubbed (e.g., with `git filter-repo`) because a simple delete-and-commit does not remove it from git history.
-
-- **Fixed: `ReferenceError` in `verify-user` route.** `app/api/verify-user/route.jsx` previously caught with parameter `e` but referenced `error` on lines 45–46. Any database failure in that route would throw a secondary `ReferenceError: error is not defined` rather than returning the intended 500 JSON response. Fixed by renaming the catch parameter to `error`.
-
-- **Test suite.** Covers Drizzle schema shape assertions, Redis credits logic (in-memory fake), and the `generate-design`, `generate-image`, and `upload-image` route handlers (happy path, 401, 402, 429, 400, 500) with all external calls mocked. 48 tests total across 5 files. See `__tests__/` and `lib/credits.test.ts` for coverage details.
-
-- **`generate-image` route does not write to the database.** Ideogram-generated images are returned to the client but not persisted to the `designs` table. Whether this is intentional or an oversight is unclear from the code alone — flagged as ambiguous.
+- **Refinement can't guarantee single-object edits.** See the caveat above — this is a property of prompt-driven img2img, not a bug to fix quietly.
+- **No public sharing yet.** Every design is private to its owner; there's no `/share/:id` page. Worth building once there's a reason to believe people want to share results, not before.
+- **No automated browser/component tests.** The 82-test suite (Vitest) covers API routes, the DB schema shape, credits logic, and the version-chain grouping function — all with external calls mocked. There's no component-level or end-to-end browser test harness in this project, so UI regressions (rendering, click-through flows) aren't caught automatically; changes to `app/dashboard/**` were verified via `next build`'s type-checking and manual code review, not a running browser session.
+- **Migration `0003_reconcile_schema_constraints.sql` is generated but not applied.** It reconciles schema.ts (which declares `createdAt`/`credits` NOT NULL and `email` UNIQUE) against the actual migration history, which never added those DB-level constraints. It's additive/constraint-only, but adding NOT NULL or UNIQUE constraints can fail against existing rows with nulls or duplicate emails — the file's header comment has the exact queries to check before running it. Not applied automatically here since there is no access to real production data to verify against.
+- **`drizzle/meta/0002_snapshot.json` was hand-authored, not tool-generated**, and had drifted from what `drizzle-kit` actually expects (wrong literal types, an old index-column format, a missing required field) — `drizzle-kit generate` couldn't even read the migration history until this was repaired. If any future migration file looks similarly "off," treat it as a signal to actually run `drizzle-kit generate` rather than hand-writing the snapshot.
+- **No database-level foreign key was missing — now fixed.** `config/schema.ts` previously didn't declare the `designs.userId → users.clerkId` FK that `drizzle/0002_add_clerk_id_fk.sql` had already added at the DB level; `schema.ts` now matches.
+- **`generate-image` (Ideogram) results aren't part of any refinement chain.** They're saved to the same `designs` table for gallery visibility, but `roomType` is set to the placeholder `"ai-image"` since there's no real room behind them — this is a different intent (concept generation, not room redesign) and intentionally isn't wired into the versioning feature above.
 
 ---
 
@@ -111,17 +103,17 @@ git clone <repo-url>
 cd AI-ROOM-DESIGNER
 npm install
 
-# 2. Environment variables
-# Copy .env.example (or create .env.local) and fill in:
+# 2. Environment variables — copy .env.example (or create .env.local):
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=
 NEXT_PUBLIC_CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 REPLICATE_API_TOKEN=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
+CLERK_WEBHOOK_SECRET=
 DATABASE_URL=                       # Neon connection string (server-only; do not prefix with NEXT_PUBLIC_)
-UPSTASH_REDIS_REST_URL=             # Upstash Redis REST URL (credits gate + rate limit)
-UPSTASH_REDIS_REST_TOKEN=           # Upstash Redis REST token
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 
 # 3. Run dev server
 npm run dev
@@ -129,6 +121,22 @@ npm run dev
 
 # 4. Run tests (no credentials required — all external calls are mocked)
 npm test
+
+# 5. Production build (requires the env vars above to be set, even if
+#    to non-functional placeholder values, since Next prerenders pages
+#    that read them at build time)
+npm run build
 ```
 
-**Required external accounts:** Neon (free tier sufficient), Cloudinary (free tier), Replicate (pay-per-run), Clerk (free tier), Upstash Redis (free tier — 10k requests/day).
+**Required external accounts:** Neon (free tier), Cloudinary (free tier), Replicate (pay-per-run), Clerk (free tier), Upstash Redis (free tier — 10k requests/day).
+
+---
+
+## Engineering highlights (what's actually implemented)
+
+- Atomic Redis-backed credits (Lua check-and-decrement) with refund-on-failure, and a sliding-window rate limiter, shared across all three generation endpoints.
+- Idempotent, race-safe user provisioning across two entry points (Clerk webhook + client fallback).
+- A chainable AI refinement pipeline: self-referencing data model, provider parameters deliberately tuned differently for initial generation vs. refinement, and a prompt strategy that explicitly separates the requested change from what must be preserved.
+- Client-side image downscaling before upload (canvas-based, falls back to the original file on any failure).
+- Structured per-generation logging (`lib/observability.ts`) across all three generation paths — provider, latency, success/failure, and the design/parent IDs involved.
+- 82 tests covering authentication, authorization (including cross-user ownership checks on refine), rate limiting, credit exhaustion and refund paths, and DB-write-failure fallbacks — all with external providers mocked.
