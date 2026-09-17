@@ -43,29 +43,36 @@ vi.mock('@/config/db', () => {
   const mockWhere = vi.fn(() => Promise.resolve({ rowCount: 1 }));
   const mockSet = vi.fn(() => ({ where: mockWhere }));
   const mockUpdate = vi.fn(() => ({ set: mockSet }));
+  const mockValues = vi.fn(() => Promise.resolve());
+  const mockInsert = vi.fn(() => ({ values: mockValues }));
   return {
-    db: { update: mockUpdate },
+    db: { update: mockUpdate, insert: mockInsert },
     __mockUpdate: mockUpdate,
     __mockSet: mockSet,
     __mockWhere: mockWhere,
+    __mockInsert: mockInsert,
+    __mockValues: mockValues,
   };
 });
 
 vi.mock('@/config/schema', () => ({
   users: {},
+  creditTransactions: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
 }));
 
-import { getCredits, decrementCredit, refundCredit, syncCreditsToDb } from '@/lib/credits';
+import { getCredits, decrementCredit, refundCredit, syncCreditsToDb, recordCreditTransaction } from '@/lib/credits';
 import * as dbModule from '@/config/db';
 
 // The mock factory exposes __mockUpdate for test introspection, but
 // TypeScript only sees the real module shape — cast to access it.
 const mockDb = dbModule as unknown as {
   __mockUpdate: ReturnType<typeof vi.fn>;
+  __mockInsert: ReturnType<typeof vi.fn>;
+  __mockValues: ReturnType<typeof vi.fn>;
 };
 
 describe('lib/credits', () => {
@@ -128,6 +135,41 @@ describe('lib/credits', () => {
       expect(remaining).toBe(1);
       // A different user's balance is untouched.
       expect(fakeStore['credits:userB']).toBeUndefined();
+    });
+  });
+
+  describe('recordCreditTransaction', () => {
+    it('inserts a transaction row with the given fields', async () => {
+      await recordCreditTransaction({
+        userId: 'user_1',
+        type: 'generation',
+        amount: -1,
+        balanceAfter: 2,
+        generationId: 7,
+      });
+
+      expect(mockDb.__mockInsert).toHaveBeenCalledTimes(1);
+      expect(mockDb.__mockValues).toHaveBeenCalledWith({
+        userId: 'user_1',
+        type: 'generation',
+        amount: -1,
+        balanceAfter: 2,
+        generationId: 7,
+      });
+    });
+
+    it('defaults generationId to null when omitted', async () => {
+      await recordCreditTransaction({ userId: 'user_1', type: 'refund', amount: 1 });
+      expect(mockDb.__mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({ generationId: null })
+      );
+    });
+
+    it('never throws when the DB insert fails (best-effort)', async () => {
+      mockDb.__mockInsert.mockImplementationOnce(() => { throw new Error('DB down'); });
+      await expect(
+        recordCreditTransaction({ userId: 'user_1', type: 'generation', amount: -1 })
+      ).resolves.toBeUndefined();
     });
   });
 

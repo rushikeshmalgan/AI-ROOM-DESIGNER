@@ -8,6 +8,25 @@ vi.mock('@/config/ideogramConfig', () => ({
   generateIdeogramImage: vi.fn(),
 }));
 
+// runGenerationAttempt's own DB bookkeeping is covered by
+// lib/generation/generationService.test.ts — mocked here as a
+// collaborator that still invokes the callback it's given, so the
+// generateIdeogramImage mock above still gets exercised and asserted on.
+vi.mock('@/lib/generation/generationService', () => ({
+  runGenerationAttempt: vi.fn(async (_meta, call) => {
+    try {
+      const result = await call();
+      if (!result?.imageUrls || result.imageUrls.length === 0) {
+        return { generationId: 1, success: false, errorMessage: 'Provider returned no images', latencyMs: 5 };
+      }
+      return { generationId: 1, success: true, imageUrls: result.imageUrls, latencyMs: 5 };
+    } catch (err) {
+      return { generationId: 1, success: false, errorMessage: err.message, latencyMs: 5 };
+    }
+  }),
+  linkGenerationToDesign: vi.fn(),
+}));
+
 vi.mock('@/config/db', () => {
   const mockReturning = vi.fn();
   const mockValues = vi.fn(() => ({ returning: mockReturning }));
@@ -38,6 +57,7 @@ vi.mock('@/lib/credits', () => ({
   checkRateLimit: vi.fn(),
   syncCreditsToDb: vi.fn(),
   refundCredit: vi.fn(),
+  recordCreditTransaction: vi.fn(),
 }));
 
 vi.mock('@/lib/analytics', () => ({

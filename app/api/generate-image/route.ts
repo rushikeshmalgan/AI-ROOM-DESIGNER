@@ -3,9 +3,10 @@ import { generateIdeogramImage } from '@/config/ideogramConfig';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
-import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
+import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit, recordCreditTransaction } from '@/lib/credits';
 import { newGenerationId, logGeneration } from '@/lib/observability';
 import { trackEvent } from '@/lib/analytics';
+import { runGenerationAttempt, linkGenerationToDesign } from '@/lib/generation/generationService';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateImageRequestBody {
@@ -67,57 +68,51 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // From here on, a credit has been spent — any failure to actually
-    // produce an image must refund it before returning.
-    const generationId = newGenerationId();
-    const startTime = Date.now();
+    // produce an image must refund it before returning. Ideogram isn't
+    // wired through ImageGenerationProvider (see lib/generation/providers.ts
+    // for why — its free-text-prompt, generate-only shape doesn't fit that
+    // interface), but it still gets the same generations-table audit trail.
     void trackEvent({
       event: 'generation_started', userId: user.id,
       properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram' },
     });
 
-    let imageUrl: string | null = null;
-    try {
-      imageUrl = await generateIdeogramImage({
-        prompt,
-        style: style || 'photographic',
-        aspectRatio: aspectRatio || '1:1',
-      });
-    } catch (genError) {
-      console.error('Error generating image with Ideogram:', genError);
-      const durationMs = Date.now() - startTime;
+    const attempt = await runGenerationAttempt(
+      { userId: user.id, generationType: 'initial', provider: 'replicate-ideogram', designStyle: style || 'photographic' },
+      async () => {
+        const url = await generateIdeogramImage({
+          prompt,
+          style: style || 'photographic',
+          aspectRatio: aspectRatio || '1:1',
+        });
+        return { imageUrls: url ? [url] : [] };
+      }
+    );
+
+    const correlationId = attempt.generationId !== null ? String(attempt.generationId) : newGenerationId();
+
+    if (!attempt.success || !attempt.imageUrls) {
+      const failureReason = attempt.errorMessage ?? 'empty result from provider';
+      console.error('Error generating image with Ideogram:', failureReason);
       logGeneration({
-        generationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
-        designStyle: style || 'photographic', durationMs,
-        success: false, failureReason: genError instanceof Error ? genError.message : 'unknown error',
+        generationId: correlationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
+        designStyle: style || 'photographic', durationMs: attempt.latencyMs, success: false, failureReason,
       });
       void trackEvent({
         event: 'generation_failed', userId: user.id,
-        properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: durationMs },
+        properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: attempt.latencyMs },
       });
       const remaining = await refundCredit(user.id);
+      void recordCreditTransaction({
+        userId: user.id, type: 'refund', amount: 1, balanceAfter: remaining, generationId: attempt.generationId,
+      });
       return NextResponse.json(
         { error: 'Failed to generate image. Your credit was not charged.', creditsRemaining: remaining },
         { status: 500 }
       );
     }
 
-    if (!imageUrl) {
-      const durationMs = Date.now() - startTime;
-      logGeneration({
-        generationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
-        designStyle: style || 'photographic', durationMs,
-        success: false, failureReason: 'empty result from provider',
-      });
-      void trackEvent({
-        event: 'generation_failed', userId: user.id,
-        properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: durationMs },
-      });
-      const remaining = await refundCredit(user.id);
-      return NextResponse.json(
-        { error: 'Failed to generate image. Your credit was not charged.', creditsRemaining: remaining },
-        { status: 500 }
-      );
-    }
+    const imageUrl = attempt.imageUrls[0];
 
     // Async best-effort: write decremented credits back to Postgres so
     // the dashboard display stays roughly in sync.
@@ -141,20 +136,25 @@ export async function POST(request: Request): Promise<NextResponse> {
         createdAt: new Date(),
       }).returning({ id: designs.id });
       savedId = inserted[0]?.id ?? null;
+      if (savedId) {
+        void linkGenerationToDesign(attempt.generationId, savedId);
+      }
     } catch (dbError) {
       console.error('Failed to save generated image to designs:', dbError);
       saved = false;
     }
 
-    const successDurationMs = Date.now() - startTime;
     logGeneration({
-      generationId, userId: user.id, designId: savedId,
+      generationId: correlationId, userId: user.id, designId: savedId,
       provider: 'replicate-ideogram', generationType: 'initial',
-      designStyle: style || 'photographic', durationMs: successDurationMs, success: true,
+      designStyle: style || 'photographic', durationMs: attempt.latencyMs, success: true,
     });
     void trackEvent({
       event: 'generation_succeeded', userId: user.id,
-      properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: successDurationMs },
+      properties: { designStyle: style || 'photographic', generationType: 'initial', provider: 'replicate-ideogram', latencyMs: attempt.latencyMs },
+    });
+    void recordCreditTransaction({
+      userId: user.id, type: 'generation', amount: -1, balanceAfter: creditResult.remaining, generationId: attempt.generationId,
     });
 
     return NextResponse.json({

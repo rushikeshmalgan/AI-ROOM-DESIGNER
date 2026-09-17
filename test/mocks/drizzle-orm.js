@@ -6,12 +6,14 @@
 // db.js maintains, using column object identity (via @/config/schema,
 // which is NOT aliased in test mode, so these are the real column
 // descriptors) to know which JS property to compare.
-import { users, designs, events } from '@/config/schema';
+import { users, designs, events, generations, creditTransactions } from '@/config/schema';
 
 const columnKeyMap = new Map();
 for (const [key, col] of Object.entries(users)) columnKeyMap.set(col, key);
 for (const [key, col] of Object.entries(designs)) columnKeyMap.set(col, key);
 for (const [key, col] of Object.entries(events)) columnKeyMap.set(col, key);
+for (const [key, col] of Object.entries(generations)) columnKeyMap.set(col, key);
+for (const [key, col] of Object.entries(creditTransactions)) columnKeyMap.set(col, key);
 
 export function eq(column, value) {
   const key = columnKeyMap.get(column);

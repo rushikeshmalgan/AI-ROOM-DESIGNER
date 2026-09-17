@@ -1,8 +1,10 @@
 import { Redis } from '@upstash/redis';
 import { Ratelimit } from '@upstash/ratelimit';
 import { db } from '@/config/db';
-import { users } from '@/config/schema';
+import { users, creditTransactions } from '@/config/schema';
 import { eq } from 'drizzle-orm';
+
+export type CreditTransactionType = 'grant' | 'generation' | 'refund' | 'purchase' | 'adjustment';
 
 let _redis: Redis | undefined;
 
@@ -93,4 +95,29 @@ export async function checkRateLimit(userId: string): Promise<{ success: boolean
   const rl = getRateLimiter();
   const { success, remaining, reset } = await rl.limit(userId);
   return { success, remaining, reset };
+}
+
+// Best-effort audit log for a Redis-driven credit change (same pattern as
+// syncCreditsToDb: never throws, never blocks the request it's called
+// from). Redis stays the source of truth for whether a request is
+// allowed to proceed — this is the "why does this user have N credits"
+// history that a bare counter can't answer on its own.
+export async function recordCreditTransaction(input: {
+  userId: string;
+  type: CreditTransactionType;
+  amount: number;
+  balanceAfter?: number;
+  generationId?: number | null;
+}): Promise<void> {
+  try {
+    await db.insert(creditTransactions).values({
+      userId: input.userId,
+      type: input.type,
+      amount: input.amount,
+      balanceAfter: input.balanceAfter,
+      generationId: input.generationId ?? null,
+    });
+  } catch (err) {
+    console.error('Failed to record credit transaction (best-effort):', err);
+  }
 }

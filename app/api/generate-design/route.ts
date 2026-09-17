@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { generateRoomDesign } from '@/config/replicateConfig';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
-import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
-import { newGenerationId, logGeneration } from '@/lib/observability';
+import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit, recordCreditTransaction } from '@/lib/credits';
+import { logGeneration, newGenerationId } from '@/lib/observability';
 import { trackEvent } from '@/lib/analytics';
+import { replicateSdxlProvider } from '@/lib/generation/providers';
+import { runGenerationAttempt, linkGenerationToDesign } from '@/lib/generation/generationService';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateDesignRequestBody {
@@ -66,59 +67,46 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // From here on, a credit has been spent — any failure to actually
-    // produce a design must refund it before returning.
-    const generationId = newGenerationId();
-    const startTime = Date.now();
+    // produce a design must refund it before returning. The route
+    // depends on `replicateSdxlProvider` (an ImageGenerationProvider),
+    // not on config/replicateConfig.ts or Replicate's SDK directly.
     void trackEvent({
       event: 'generation_started', userId: user.id,
       properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl' },
     });
 
-    let generatedDesigns: string[] | undefined;
-    try {
-      generatedDesigns = await generateRoomDesign({
-        imageUrl,
-        roomType,
-        designStyle: designType,
-        additionalRequirements,
-      });
-    } catch (genError) {
-      console.error('Error generating room design:', genError);
-      const durationMs = Date.now() - startTime;
-      const failureReason = genError instanceof Error ? genError.message : 'unknown error';
+    const attempt = await runGenerationAttempt(
+      { userId: user.id, generationType: 'initial', provider: 'replicate-sdxl', roomType, designStyle: designType },
+      () => replicateSdxlProvider.generate({ imageUrl, roomType, designStyle: designType, additionalRequirements })
+    );
+
+    // The generations table row is the durable audit record; this
+    // correlation id is what ties it to the structured log line below
+    // (falls back to a fresh id only if the row itself failed to insert).
+    const correlationId = attempt.generationId !== null ? String(attempt.generationId) : newGenerationId();
+
+    if (!attempt.success || !attempt.imageUrls) {
+      const failureReason = attempt.errorMessage ?? 'empty result from provider';
+      console.error('Error generating room design:', failureReason);
       logGeneration({
-        generationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
-        roomType, designStyle: designType, durationMs, success: false, failureReason,
+        generationId: correlationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
+        roomType, designStyle: designType, durationMs: attempt.latencyMs, success: false, failureReason,
       });
       void trackEvent({
         event: 'generation_failed', userId: user.id,
-        properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: durationMs },
+        properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: attempt.latencyMs },
       });
       const remaining = await refundCredit(user.id);
+      void recordCreditTransaction({
+        userId: user.id, type: 'refund', amount: 1, balanceAfter: remaining, generationId: attempt.generationId,
+      });
       return NextResponse.json(
         { error: 'Failed to generate design. Your credit was not charged.', creditsRemaining: remaining },
         { status: 500 }
       );
     }
 
-    if (!generatedDesigns || generatedDesigns.length === 0) {
-      const durationMs = Date.now() - startTime;
-      logGeneration({
-        generationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
-        roomType, designStyle: designType, durationMs, success: false, failureReason: 'empty result from provider',
-      });
-      void trackEvent({
-        event: 'generation_failed', userId: user.id,
-        properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: durationMs },
-      });
-      const remaining = await refundCredit(user.id);
-      return NextResponse.json(
-        { error: 'Failed to generate design. Your credit was not charged.', creditsRemaining: remaining },
-        { status: 500 }
-      );
-    }
-
-    const generatedImageUrl = generatedDesigns[0];
+    const generatedImageUrl = attempt.imageUrls[0];
 
     // The provider call succeeded — the credit is correctly spent from
     // here even if the DB write below fails; only surface a warning.
@@ -135,20 +123,25 @@ export async function POST(request: Request): Promise<NextResponse> {
         createdAt: new Date(),
       }).returning();
       savedDesign = inserted[0];
+      if (savedDesign) {
+        void linkGenerationToDesign(attempt.generationId, savedDesign.id);
+      }
     } catch (dbError) {
       console.error('Failed to save generated design to DB:', dbError);
       saved = false;
     }
 
-    const successDurationMs = Date.now() - startTime;
     logGeneration({
-      generationId, userId: user.id, designId: savedDesign?.id ?? null,
+      generationId: correlationId, userId: user.id, designId: savedDesign?.id ?? null,
       provider: 'replicate-sdxl', generationType: 'initial', roomType, designStyle: designType,
-      durationMs: successDurationMs, success: true,
+      durationMs: attempt.latencyMs, success: true,
     });
     void trackEvent({
       event: 'generation_succeeded', userId: user.id,
-      properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: successDurationMs },
+      properties: { roomType, designStyle: designType, generationType: 'initial', provider: 'replicate-sdxl', latencyMs: attempt.latencyMs },
+    });
+    void recordCreditTransaction({
+      userId: user.id, type: 'generation', amount: -1, balanceAfter: creditResult.remaining, generationId: attempt.generationId,
     });
 
     // Async best-effort: write decremented credits back to Postgres so

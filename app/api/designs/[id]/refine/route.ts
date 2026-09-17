@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
-import { refineRoomDesign } from '@/config/replicateConfig';
-import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
+import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit, recordCreditTransaction } from '@/lib/credits';
 import { newGenerationId, logGeneration } from '@/lib/observability';
 import { trackEvent } from '@/lib/analytics';
+import { replicateSdxlProvider } from '@/lib/generation/providers';
+import { runGenerationAttempt, linkGenerationToDesign } from '@/lib/generation/generationService';
 import { eq } from 'drizzle-orm';
 
 // Not exported: Next.js route files may only export HTTP method
@@ -101,8 +102,6 @@ export async function POST(
 
     // From here on, a credit has been spent — any failure to actually
     // produce a refinement must refund it before returning.
-    const generationId = newGenerationId();
-    const startTime = Date.now();
     void trackEvent({
       event: 'refinement_started', userId: user.id,
       properties: {
@@ -111,63 +110,50 @@ export async function POST(
       },
     });
 
-    let refinedDesigns: string[] | undefined;
-    try {
-      refinedDesigns = await refineRoomDesign({
+    const attempt = await runGenerationAttempt(
+      {
+        userId: user.id, generationType: 'refinement', provider: 'replicate-sdxl',
+        roomType: parent.roomType, designStyle: parent.designType, instruction, parentDesignId: parent.id,
+      },
+      () => replicateSdxlProvider.refine({
         // Refine from the previous generation, not the original photo —
         // each refinement builds on the last, not on where the chain started.
         sourceImageUrl: parent.generatedImageUrl,
         roomType: parent.roomType,
         designStyle: parent.designType,
         instruction,
-      });
-    } catch (genError) {
-      console.error('Error refining room design:', genError);
-      const durationMs = Date.now() - startTime;
+      })
+    );
+
+    const correlationId = attempt.generationId !== null ? String(attempt.generationId) : newGenerationId();
+
+    if (!attempt.success || !attempt.imageUrls) {
+      const failureReason = attempt.errorMessage ?? 'empty result from provider';
+      console.error('Error refining room design:', failureReason);
       logGeneration({
-        generationId, userId: user.id, parentDesignId: parent.id,
+        generationId: correlationId, userId: user.id, parentDesignId: parent.id,
         provider: 'replicate-sdxl', generationType: 'refinement',
         roomType: parent.roomType, designStyle: parent.designType,
-        durationMs, success: false,
-        failureReason: genError instanceof Error ? genError.message : 'unknown error',
+        durationMs: attempt.latencyMs, success: false, failureReason,
       });
       void trackEvent({
         event: 'refinement_failed', userId: user.id,
         properties: {
           roomType: parent.roomType, designStyle: parent.designType,
-          generationType: 'refinement', provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: durationMs,
+          generationType: 'refinement', provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: attempt.latencyMs,
         },
       });
       const remaining = await refundCredit(user.id);
+      void recordCreditTransaction({
+        userId: user.id, type: 'refund', amount: 1, balanceAfter: remaining, generationId: attempt.generationId,
+      });
       return NextResponse.json(
         { error: 'Failed to refine design. Your credit was not charged.', creditsRemaining: remaining },
         { status: 500 }
       );
     }
 
-    if (!refinedDesigns || refinedDesigns.length === 0) {
-      const durationMs = Date.now() - startTime;
-      logGeneration({
-        generationId, userId: user.id, parentDesignId: parent.id,
-        provider: 'replicate-sdxl', generationType: 'refinement',
-        roomType: parent.roomType, designStyle: parent.designType,
-        durationMs, success: false, failureReason: 'empty result from provider',
-      });
-      void trackEvent({
-        event: 'refinement_failed', userId: user.id,
-        properties: {
-          roomType: parent.roomType, designStyle: parent.designType,
-          generationType: 'refinement', provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: durationMs,
-        },
-      });
-      const remaining = await refundCredit(user.id);
-      return NextResponse.json(
-        { error: 'Failed to refine design. Your credit was not charged.', creditsRemaining: remaining },
-        { status: 500 }
-      );
-    }
-
-    const generatedImageUrl = refinedDesigns[0];
+    const generatedImageUrl = attempt.imageUrls[0];
 
     // The provider call succeeded — the credit is correctly spent from
     // here even if the DB write below fails; only surface a warning.
@@ -187,24 +173,29 @@ export async function POST(
         createdAt: new Date(),
       }).returning();
       savedDesign = inserted[0];
+      if (savedDesign) {
+        void linkGenerationToDesign(attempt.generationId, savedDesign.id);
+      }
     } catch (dbError) {
       console.error('Failed to save refined design to DB:', dbError);
       saved = false;
     }
 
-    const successDurationMs = Date.now() - startTime;
     logGeneration({
-      generationId, userId: user.id, designId: savedDesign?.id ?? null, parentDesignId: parent.id,
+      generationId: correlationId, userId: user.id, designId: savedDesign?.id ?? null, parentDesignId: parent.id,
       provider: 'replicate-sdxl', generationType: 'refinement',
       roomType: parent.roomType, designStyle: parent.designType,
-      durationMs: successDurationMs, success: true,
+      durationMs: attempt.latencyMs, success: true,
     });
     void trackEvent({
       event: 'refinement_succeeded', userId: user.id,
       properties: {
         roomType: parent.roomType, designStyle: parent.designType, generationType: 'refinement',
-        provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: successDurationMs,
+        provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: attempt.latencyMs,
       },
+    });
+    void recordCreditTransaction({
+      userId: user.id, type: 'generation', amount: -1, balanceAfter: creditResult.remaining, generationId: attempt.generationId,
     });
 
     if (email) {

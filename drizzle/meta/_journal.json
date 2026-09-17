@@ -50,6 +50,13 @@
       "when": 1789655742492,
       "tag": "0006_add_design_public_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789661188273,
+      "tag": "0007_add_generations_and_credit_transactions",
+      "breakpoints": true
     }
   ]
 }

@@ -20,3 +20,5 @@ export async function syncCreditsToDb() {}
 export async function getCredits() {
   return 3;
 }
+
+export async function recordCreditTransaction() {}

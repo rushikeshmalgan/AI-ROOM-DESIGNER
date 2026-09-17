@@ -4,7 +4,7 @@
 // not general Drizzle semantics. State lives for the lifetime of the
 // `next dev`/`next start` process the E2E run boots — see
 // __resetTestDb()/__seedTestDb() below if a spec needs a clean slate.
-import { users, designs, events } from '@/config/schema';
+import { users, designs, events, generations, creditTransactions } from '@/config/schema';
 
 // Duplicated (not imported) from drizzle-orm.js: NormalModuleReplacementPlugin
 // swaps the resolved resource for config/db.ts but doesn't preserve this
@@ -15,39 +15,42 @@ const columnKeyMap = new Map();
 for (const [key, col] of Object.entries(users)) columnKeyMap.set(col, key);
 for (const [key, col] of Object.entries(designs)) columnKeyMap.set(col, key);
 for (const [key, col] of Object.entries(events)) columnKeyMap.set(col, key);
+for (const [key, col] of Object.entries(generations)) columnKeyMap.set(col, key);
+for (const [key, col] of Object.entries(creditTransactions)) columnKeyMap.set(col, key);
 
-let usersStore = [];
-let designsStore = [];
-let eventsStore = [];
-let nextUserId = 1;
-let nextDesignId = 1;
-let nextEventId = 1;
+const TABLES = new Map([
+  [users, 'users'],
+  [designs, 'designs'],
+  [events, 'events'],
+  [generations, 'generations'],
+  [creditTransactions, 'creditTransactions'],
+]);
+
+let stores = { users: [], designs: [], events: [], generations: [], creditTransactions: [] };
+let nextIds = { users: 1, designs: 1, events: 1, generations: 1, creditTransactions: 1 };
 
 export function __resetTestDb() {
-  usersStore = [];
-  designsStore = [];
-  eventsStore = [];
-  nextUserId = 1;
-  nextDesignId = 1;
-  nextEventId = 1;
+  stores = { users: [], designs: [], events: [], generations: [], creditTransactions: [] };
+  nextIds = { users: 1, designs: 1, events: 1, generations: 1, creditTransactions: 1 };
 }
 
-export function __seedTestDb({ users: u, designs: d, events: e } = {}) {
-  if (u) usersStore = u;
-  if (d) designsStore = d;
-  if (e) eventsStore = e;
+export function __seedTestDb(seed = {}) {
+  for (const key of Object.keys(stores)) {
+    if (seed[key]) stores[key] = seed[key];
+  }
+}
+
+function tableKey(table) {
+  return TABLES.get(table) ?? 'designs'; // unrecognized table objects fall back rather than throw
 }
 
 function storeFor(table) {
-  if (table === users) return usersStore;
-  if (table === events) return eventsStore;
-  return designsStore;
+  return stores[tableKey(table)];
 }
 
 function nextIdFor(table) {
-  if (table === users) return nextUserId++;
-  if (table === events) return nextEventId++;
-  return nextDesignId++;
+  const key = tableKey(table);
+  return nextIds[key]++;
 }
 
 function applyWhere(rows, condition) {
@@ -101,8 +104,11 @@ export const db = {
     return {
       values(valuesObj) {
         let conflictTarget = null;
+        let inserted = false;
 
         function doInsert(projection) {
+          if (inserted) return Promise.resolve([]); // defensive: never double-insert
+          inserted = true;
           const store = storeFor(table);
           if (conflictTarget) {
             const key = columnKeyMap.get(conflictTarget);
@@ -122,6 +128,15 @@ export const db = {
           },
           returning(projection) {
             return doInsert(projection);
+          },
+          // Real Drizzle's `.values()` result is itself awaitable when
+          // no `.returning()`/`.onConflictDoNothing()` follows (e.g.
+          // trackEvent's and recordCreditTransaction's bare inserts) —
+          // without this, `await db.insert(x).values(y)` alone would
+          // resolve to this plain object without ever performing the
+          // insert.
+          then(resolve, reject) {
+            return doInsert(undefined).then(resolve, reject);
           },
         };
       },

@@ -4,8 +4,27 @@ vi.mock('@clerk/nextjs/server', () => ({
   currentUser: vi.fn(),
 }));
 
-vi.mock('@/config/replicateConfig', () => ({
-  refineRoomDesign: vi.fn(),
+vi.mock('@/lib/generation/providers', () => ({
+  replicateSdxlProvider: { generate: vi.fn(), refine: vi.fn() },
+}));
+
+// runGenerationAttempt's own DB bookkeeping is covered by
+// lib/generation/generationService.test.ts — mocked here as a
+// collaborator that still invokes the callback it's given, so
+// assertions on replicateSdxlProvider.refine's call args keep working.
+vi.mock('@/lib/generation/generationService', () => ({
+  runGenerationAttempt: vi.fn(async (_meta, call) => {
+    try {
+      const result = await call();
+      if (!result?.imageUrls || result.imageUrls.length === 0) {
+        return { generationId: 1, success: false, errorMessage: 'Provider returned no images', latencyMs: 5 };
+      }
+      return { generationId: 1, success: true, imageUrls: result.imageUrls, latencyMs: 5 };
+    } catch (err) {
+      return { generationId: 1, success: false, errorMessage: err.message, latencyMs: 5 };
+    }
+  }),
+  linkGenerationToDesign: vi.fn(),
 }));
 
 vi.mock('@/config/db', () => {
@@ -38,6 +57,7 @@ vi.mock('@/lib/credits', () => ({
   checkRateLimit: vi.fn(),
   syncCreditsToDb: vi.fn(),
   refundCredit: vi.fn(),
+  recordCreditTransaction: vi.fn(),
 }));
 
 vi.mock('@/lib/analytics', () => ({
@@ -45,7 +65,7 @@ vi.mock('@/lib/analytics', () => ({
 }));
 
 import { currentUser } from '@clerk/nextjs/server';
-import { refineRoomDesign } from '@/config/replicateConfig';
+import { replicateSdxlProvider } from '@/lib/generation/providers';
 import * as dbModule from '@/config/db';
 import { decrementCredit, checkRateLimit, refundCredit } from '@/lib/credits';
 import { trackEvent } from '@/lib/analytics';
@@ -89,7 +109,7 @@ describe('POST /api/designs/:id/refine', () => {
 
   it('happy path — owner refines their design → 200, uses previous image as source, parentDesignId set', async () => {
     vi.mocked(currentUser).mockResolvedValue(OWNER);
-    vi.mocked(refineRoomDesign).mockResolvedValue([REFINED_URL]);
+    vi.mocked(replicateSdxlProvider.refine).mockResolvedValue({ imageUrls: [REFINED_URL] });
     dbModule.__mockReturning.mockResolvedValue([{ ...PARENT_DESIGN, id: 43, generatedImageUrl: REFINED_URL, parentDesignId: 42 }]);
 
     const res = await POST(makeRequest({ instruction: 'Change the sofa to a beige sectional' }), ctx('42'));
@@ -101,7 +121,7 @@ describe('POST /api/designs/:id/refine', () => {
     expect(body.parentDesignId).toBe(42);
     expect(body.creditsRemaining).toBe(2);
 
-    expect(refineRoomDesign).toHaveBeenCalledWith({
+    expect(replicateSdxlProvider.refine).toHaveBeenCalledWith({
       sourceImageUrl: PARENT_DESIGN.generatedImageUrl, // the previous generation, not the original photo
       roomType: PARENT_DESIGN.roomType,
       designStyle: PARENT_DESIGN.designType,
@@ -124,7 +144,7 @@ describe('POST /api/designs/:id/refine', () => {
 
     expect(res.status).toBe(401);
     expect(body.error).toBe('Unauthorized');
-    expect(refineRoomDesign).not.toHaveBeenCalled();
+    expect(replicateSdxlProvider.refine).not.toHaveBeenCalled();
     expect(decrementCredit).not.toHaveBeenCalled();
   });
 
@@ -148,7 +168,7 @@ describe('POST /api/designs/:id/refine', () => {
 
     expect(res.status).toBe(429);
     expect(decrementCredit).not.toHaveBeenCalled();
-    expect(refineRoomDesign).not.toHaveBeenCalled();
+    expect(replicateSdxlProvider.refine).not.toHaveBeenCalled();
   });
 
   it('missing instruction → 400, no credit charged', async () => {
@@ -198,7 +218,7 @@ describe('POST /api/designs/:id/refine', () => {
     expect(res.status).toBe(404);
     expect(body.error).toBe('Design not found');
     expect(decrementCredit).not.toHaveBeenCalled();
-    expect(refineRoomDesign).not.toHaveBeenCalled();
+    expect(replicateSdxlProvider.refine).not.toHaveBeenCalled();
   });
 
   it("another user's design → 404 (not 403), never reveals it exists, no credit charged", async () => {
@@ -211,7 +231,7 @@ describe('POST /api/designs/:id/refine', () => {
     expect(res.status).toBe(404);
     expect(body.error).toBe('Design not found');
     expect(decrementCredit).not.toHaveBeenCalled();
-    expect(refineRoomDesign).not.toHaveBeenCalled();
+    expect(replicateSdxlProvider.refine).not.toHaveBeenCalled();
   });
 
   it('402 — insufficient credits → Payment Required', async () => {
@@ -222,12 +242,12 @@ describe('POST /api/designs/:id/refine', () => {
     const body = await res.json();
 
     expect(res.status).toBe(402);
-    expect(refineRoomDesign).not.toHaveBeenCalled();
+    expect(replicateSdxlProvider.refine).not.toHaveBeenCalled();
   });
 
   it('Replicate throws during refinement → 500, credit refunded', async () => {
     vi.mocked(currentUser).mockResolvedValue(OWNER);
-    vi.mocked(refineRoomDesign).mockRejectedValue(new Error('Replicate API error'));
+    vi.mocked(replicateSdxlProvider.refine).mockRejectedValue(new Error('Replicate API error'));
 
     const res = await POST(makeRequest({ instruction: 'Change the sofa' }), ctx('42'));
     const body = await res.json();
@@ -241,7 +261,7 @@ describe('POST /api/designs/:id/refine', () => {
 
   it('Replicate returns empty array → 500, credit refunded', async () => {
     vi.mocked(currentUser).mockResolvedValue(OWNER);
-    vi.mocked(refineRoomDesign).mockResolvedValue([]);
+    vi.mocked(replicateSdxlProvider.refine).mockResolvedValue({ imageUrls: [] });
 
     const res = await POST(makeRequest({ instruction: 'Change the sofa' }), ctx('42'));
     const body = await res.json();
@@ -253,7 +273,7 @@ describe('POST /api/designs/:id/refine', () => {
 
   it('DB insert fails after successful refinement → 200, saved:false, no refund', async () => {
     vi.mocked(currentUser).mockResolvedValue(OWNER);
-    vi.mocked(refineRoomDesign).mockResolvedValue([REFINED_URL]);
+    vi.mocked(replicateSdxlProvider.refine).mockResolvedValue({ imageUrls: [REFINED_URL] });
     dbModule.__mockInsert.mockImplementationOnce(() => { throw new Error('DB write failed'); });
 
     const res = await POST(makeRequest({ instruction: 'Change the sofa' }), ctx('42'));
