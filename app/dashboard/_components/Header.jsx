@@ -5,8 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link';
 import { UserButton } from '@clerk/nextjs'
 import { UserDetailContext } from '@/app/_context/UserDetailContext'
-import Button from '@/app/components/ui/Button'
-import { Home, PlusCircle, Settings, Image as ImageIcon } from 'lucide-react'
+import { Home, PlusCircle, Image as ImageIcon } from 'lucide-react'
 import { motion } from 'framer-motion';
 
 function Header() {
@@ -39,7 +38,6 @@ function Header() {
           <NavLink href="/dashboard" icon={<Home size={18} />} text="Home" />
           <NavLink href="/dashboard/create-new" icon={<PlusCircle size={18} />} text="Create New" />
           <NavLink href="/dashboard/generate-image" icon={<ImageIcon size={18} />} text="Generate Image" />
-          <NavLink href="/dashboard/settings" icon={<Settings size={18} />} text="Settings" />
         </div>
 
         {/* Right Section */}
@@ -54,14 +52,6 @@ function Header() {
               {userDetail?.credits ?? 0}
             </h2>
           </motion.div>
-
-          {/* Buy Credits Button */}
-          <Button 
-            variant="outline" 
-            className="rounded-full border border-purple-400 text-purple-600 dark:text-purple-300"
-          >
-            Buy More Credits
-          </Button>
 
           {/* User Avatar */}
           <UserButton afterSignOutUrl="/" />
