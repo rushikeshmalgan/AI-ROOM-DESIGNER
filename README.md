@@ -6,6 +6,8 @@ Upload a photo of your room, pick a style, and get back a redesigned version —
 
 There is also a separate text-to-image path (Ideogram via Replicate) for generating a room concept from a written description alone, with no starting photo — a different intent from redesigning a real room, so it stays a separate flow rather than being forced into the same one.
 
+A design is private by default; sharing one explicitly creates a public `/share/:id` page (before/after, no auth required, with social-preview metadata) so a result can actually be sent to someone instead of only being visible inside the dashboard.
+
 The stack is Next.js 15 App Router, React 19, Neon serverless Postgres with Drizzle ORM, Clerk for auth, Cloudinary for image storage, Upstash Redis for credits/rate-limiting, and Replicate as the inference host for both AI models.
 
 ---
@@ -81,16 +83,22 @@ If either Replicate call fails or returns nothing, the route calls `refundCredit
 
 Both generation routes and the refine route share one Redis-backed gate: a sliding-window rate limiter (10 req/min per user via `@upstash/ratelimit`) and an atomic Lua check-and-decrement for credits (`credits:{userId}` in Redis). Postgres `users.credits` is a display-only mirror, updated best-effort after a successful generation — Redis is the source of truth enforcement runs against.
 
+### Public sharing
+
+`designs.isPublic` is `false` by default. `POST /api/designs/:id/share` is the only way to flip it — owner-only, idempotent, same 404-not-403 ownership check as refine. `/share/:id` re-checks `isPublic` on every load rather than trusting the URL, renders a before/after with `generateMetadata`-driven OG/Twitter previews, and offers a "Design your own room" CTA — the deliberate first growth loop (see `docs/growth-experiments.md`). There's currently no way to revoke sharing once granted.
+
+### Analytics and feedback
+
+One Postgres table (`events`: userId, event name, a small JSON properties bag) backs both the product funnel (`docs/analytics-funnel.md`) and two lightweight in-product feedback widgets — an emoji reaction after a first generation, and a checklist after each refinement asking specifically whether it changed what was asked, preserved the room, changed too much, or looked unrealistic. That second one exists to eventually justify (or rule out) a segmentation/masking investment with real data instead of a guess — see `docs/ai-quality-decision-framework.md`.
+
 ---
 
 ## Honest limitations
 
-- **Refinement can't guarantee single-object edits.** See the caveat above — this is a property of prompt-driven img2img, not a bug to fix quietly.
-- **No public sharing yet.** Every design is private to its owner; there's no `/share/:id` page. Worth building once there's a reason to believe people want to share results, not before.
-- **No automated browser/component tests.** The 82-test suite (Vitest) covers API routes, the DB schema shape, credits logic, and the version-chain grouping function — all with external calls mocked. There's no component-level or end-to-end browser test harness in this project, so UI regressions (rendering, click-through flows) aren't caught automatically; changes to `app/dashboard/**` were verified via `next build`'s type-checking and manual code review, not a running browser session.
-- **Migration `0003_reconcile_schema_constraints.sql` is generated but not applied.** It reconciles schema.ts (which declares `createdAt`/`credits` NOT NULL and `email` UNIQUE) against the actual migration history, which never added those DB-level constraints. It's additive/constraint-only, but adding NOT NULL or UNIQUE constraints can fail against existing rows with nulls or duplicate emails — the file's header comment has the exact queries to check before running it. Not applied automatically here since there is no access to real production data to verify against.
-- **`drizzle/meta/0002_snapshot.json` was hand-authored, not tool-generated**, and had drifted from what `drizzle-kit` actually expects (wrong literal types, an old index-column format, a missing required field) — `drizzle-kit generate` couldn't even read the migration history until this was repaired. If any future migration file looks similarly "off," treat it as a signal to actually run `drizzle-kit generate` rather than hand-writing the snapshot.
-- **No database-level foreign key was missing — now fixed.** `config/schema.ts` previously didn't declare the `designs.userId → users.clerkId` FK that `drizzle/0002_add_clerk_id_fk.sql` had already added at the DB level; `schema.ts` now matches.
+- **Refinement can't guarantee single-object edits.** See the caveat above — this is a property of prompt-driven img2img, not a bug to fix quietly. `docs/ai-quality-decision-framework.md` covers how to decide whether that's ever worth fixing with segmentation/masking.
+- **Sharing can't be revoked.** Once a design is shared via `POST /api/designs/:id/share`, there's no endpoint to set `isPublic` back to `false`. A real gap, not an oversight to leave silent.
+- **No automated component/browser test beyond a small Playwright suite.** `npm run test:e2e` covers create-new, refinement, and sharing against in-memory test doubles (see `e2e/README.md` for exactly what's mocked and why) — it proves the frontend wiring holds together, not that real Replicate/Cloudinary/Clerk calls behave the same way. `docs/manual-qa-checklist.md` is what actually verifies that, against a real deployment.
+- **Migration `0003_reconcile_schema_constraints.sql` is generated but not applied.** It reconciles schema.ts (which declares `createdAt`/`credits` NOT NULL and `email` UNIQUE) against the actual migration history, which never added those DB-level constraints. It's additive/constraint-only and idempotent, but adding NOT NULL or UNIQUE constraints can fail against existing rows with nulls or duplicate emails — see `docs/db-migration-checklist.md` before applying it.
 - **`generate-image` (Ideogram) results aren't part of any refinement chain.** They're saved to the same `designs` table for gallery visibility, but `roomType` is set to the placeholder `"ai-image"` since there's no real room behind them — this is a different intent (concept generation, not room redesign) and intentionally isn't wired into the versioning feature above.
 
 ---
@@ -122,9 +130,14 @@ npm run dev
 # 4. Run tests (no credentials required — all external calls are mocked)
 npm test
 
-# 5. Production build (requires the env vars above to be set, even if
+# 5. Run the E2E suite (also no credentials required — see e2e/README.md
+#    for what it mocks and why; builds and boots its own server)
+npm run test:e2e
+
+# 6. Production build (requires the env vars above to be set, even if
 #    to non-functional placeholder values, since Next prerenders pages
-#    that read them at build time)
+#    that read them at build time). Use a clean checkout / cleared
+#    .next — see next.config.mjs's distDir comment for why that matters.
 npm run build
 ```
 
@@ -134,9 +147,10 @@ npm run build
 
 ## Engineering highlights (what's actually implemented)
 
-- Atomic Redis-backed credits (Lua check-and-decrement) with refund-on-failure, and a sliding-window rate limiter, shared across all three generation endpoints.
+- Atomic Redis-backed credits (Lua check-and-decrement) with refund-on-failure, and a sliding-window rate limiter, shared across all three generation endpoints plus refine and share.
 - Idempotent, race-safe user provisioning across two entry points (Clerk webhook + client fallback).
 - A chainable AI refinement pipeline: self-referencing data model, provider parameters deliberately tuned differently for initial generation vs. refinement, and a prompt strategy that explicitly separates the requested change from what must be preserved.
 - Client-side image downscaling before upload (canvas-based, falls back to the original file on any failure).
-- Structured per-generation logging (`lib/observability.ts`) across all three generation paths — provider, latency, success/failure, and the design/parent IDs involved.
-- 82 tests covering authentication, authorization (including cross-user ownership checks on refine), rate limiting, credit exhaustion and refund paths, and DB-write-failure fallbacks — all with external providers mocked.
+- Structured per-generation logging (`lib/observability.ts`) and product-analytics event tracking (`lib/analytics.ts`) across all three generation paths — provider, latency, success/failure, and the design/parent IDs involved.
+- Explicit, revocation-free (a known gap) public sharing with owner-only opt-in and social-preview metadata.
+- 99 Vitest tests (authentication, authorization including cross-user ownership checks, rate limiting, credit exhaustion/refund, DB-write-failure fallbacks, analytics tracking) plus a small Playwright E2E suite covering the create → generate → refine → share flow end to end against in-memory test doubles — see `e2e/README.md`.
