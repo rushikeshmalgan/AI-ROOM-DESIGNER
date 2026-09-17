@@ -5,9 +5,15 @@ import { designs, users } from '@/config/schema';
 import { refineRoomDesign } from '@/config/replicateConfig';
 import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
 import { newGenerationId, logGeneration } from '@/lib/observability';
+import { trackEvent } from '@/lib/analytics';
 import { eq } from 'drizzle-orm';
 
-export const MAX_INSTRUCTION_LENGTH = 300;
+// Not exported: Next.js route files may only export HTTP method
+// handlers plus a small allowlist of special configs — an extra named
+// export here fails typed-route validation on a clean build (it was
+// masked locally for a while by incremental build-cache reuse, but
+// fails on any genuinely clean build, e.g. a real CI/deploy pipeline).
+const MAX_INSTRUCTION_LENGTH = 300;
 
 export interface RefineDesignRequestBody {
   instruction: string;
@@ -97,6 +103,14 @@ export async function POST(
     // produce a refinement must refund it before returning.
     const generationId = newGenerationId();
     const startTime = Date.now();
+    void trackEvent({
+      event: 'refinement_started', userId: user.id,
+      properties: {
+        roomType: parent.roomType, designStyle: parent.designType,
+        generationType: 'refinement', provider: 'replicate-sdxl', parentDesignId: parent.id,
+      },
+    });
+
     let refinedDesigns: string[] | undefined;
     try {
       refinedDesigns = await refineRoomDesign({
@@ -109,12 +123,20 @@ export async function POST(
       });
     } catch (genError) {
       console.error('Error refining room design:', genError);
+      const durationMs = Date.now() - startTime;
       logGeneration({
         generationId, userId: user.id, parentDesignId: parent.id,
         provider: 'replicate-sdxl', generationType: 'refinement',
         roomType: parent.roomType, designStyle: parent.designType,
-        durationMs: Date.now() - startTime, success: false,
+        durationMs, success: false,
         failureReason: genError instanceof Error ? genError.message : 'unknown error',
+      });
+      void trackEvent({
+        event: 'refinement_failed', userId: user.id,
+        properties: {
+          roomType: parent.roomType, designStyle: parent.designType,
+          generationType: 'refinement', provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: durationMs,
+        },
       });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
@@ -124,11 +146,19 @@ export async function POST(
     }
 
     if (!refinedDesigns || refinedDesigns.length === 0) {
+      const durationMs = Date.now() - startTime;
       logGeneration({
         generationId, userId: user.id, parentDesignId: parent.id,
         provider: 'replicate-sdxl', generationType: 'refinement',
         roomType: parent.roomType, designStyle: parent.designType,
-        durationMs: Date.now() - startTime, success: false, failureReason: 'empty result from provider',
+        durationMs, success: false, failureReason: 'empty result from provider',
+      });
+      void trackEvent({
+        event: 'refinement_failed', userId: user.id,
+        properties: {
+          roomType: parent.roomType, designStyle: parent.designType,
+          generationType: 'refinement', provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: durationMs,
+        },
       });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
@@ -162,11 +192,19 @@ export async function POST(
       saved = false;
     }
 
+    const successDurationMs = Date.now() - startTime;
     logGeneration({
       generationId, userId: user.id, designId: savedDesign?.id ?? null, parentDesignId: parent.id,
       provider: 'replicate-sdxl', generationType: 'refinement',
       roomType: parent.roomType, designStyle: parent.designType,
-      durationMs: Date.now() - startTime, success: true,
+      durationMs: successDurationMs, success: true,
+    });
+    void trackEvent({
+      event: 'refinement_succeeded', userId: user.id,
+      properties: {
+        roomType: parent.roomType, designStyle: parent.designType, generationType: 'refinement',
+        provider: 'replicate-sdxl', parentDesignId: parent.id, latencyMs: successDurationMs,
+      },
     });
 
     if (email) {

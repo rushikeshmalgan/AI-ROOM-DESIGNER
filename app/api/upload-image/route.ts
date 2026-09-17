@@ -3,8 +3,13 @@ import { currentUser } from '@clerk/nextjs/server';
 import { cloudinary } from '@/config/cloudinaryConfig';
 import { checkRateLimit } from '@/lib/credits';
 
-export const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+// Not exported: Next.js route files may only export HTTP method
+// handlers plus a small allowlist of special configs — an extra named
+// value export here fails typed-route validation on a clean build (it
+// was masked locally for a while by incremental build-cache reuse, but
+// fails on any genuinely clean build, e.g. a real CI/deploy pipeline).
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
 export interface UploadImageResponse {
   success: boolean;

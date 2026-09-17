@@ -5,6 +5,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Test-mode builds get their own output/cache directory. Webpack's
+  // persistent build cache doesn't fully key off the env-var-driven
+  // resolve.alias/plugin changes below, so a real build and a test-mode
+  // build sharing one .next/cache could serve a stale, un-aliased
+  // resolution from whichever build ran most recently — e.g. a real
+  // `next build` in between two E2E runs silently poisoning the next
+  // one. Separate directories make that class of staleness impossible
+  // instead of relying on remembering to clear the cache by hand.
+  distDir: process.env.PLAYWRIGHT_TEST_MODE === '1' ? '.next-e2e' : '.next',
   webpack: (config, { webpack }) => {
     // Test-only module swap for Playwright E2E runs. This branch is
     // unreachable unless PLAYWRIGHT_TEST_MODE is the literal string
