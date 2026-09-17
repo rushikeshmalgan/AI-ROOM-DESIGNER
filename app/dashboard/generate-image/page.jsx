@@ -8,6 +8,7 @@ import { motion } from "framer-motion";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 import LoadingSpinner from "@/app/components/ui/LoadingSpinner";
+import GenerationStages from "@/app/components/ui/GenerationStages";
 
 function GenerateImagePage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ function GenerateImagePage() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [creditSafe, setCreditSafe] = useState(false);
   const [generatedImage, setGeneratedImage] = useState(null);
   const [saveWarning, setSaveWarning] = useState("");
 
@@ -43,6 +45,8 @@ function GenerateImagePage() {
   };
 
   const handleGenerate = async () => {
+    if (isGenerating) return; // belt-and-suspenders against double-submit
+
     // Validate form data
     if (!formData.prompt) {
       setError("Please enter a prompt");
@@ -50,6 +54,7 @@ function GenerateImagePage() {
     }
 
     setIsGenerating(true);
+    setError("");
 
     try {
       // Call the API to generate the image
@@ -70,10 +75,15 @@ function GenerateImagePage() {
         }
       } else {
         setError("Failed to generate image. Please try again.");
+        setCreditSafe(false);
       }
     } catch (error) {
       console.error("Error generating image:", error);
+      const status = error.response?.status;
       setError(error.response?.data?.error || "An error occurred. Please try again.");
+      // 400/401/402/429 never touch credits; a 500 only reaches here
+      // already refunded (the API always refunds before responding).
+      setCreditSafe(status !== undefined && status !== 200);
     } finally {
       setIsGenerating(false);
     }
@@ -113,9 +123,19 @@ function GenerateImagePage() {
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Image Settings</h2>
 
-            {error && (
+            {error && !isGenerating && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                {error}
+                <p className="font-medium">We couldn&apos;t generate this image.</p>
+                {creditSafe && <p className="text-sm mt-1">Your credit wasn&apos;t charged.</p>}
+                <p className="text-sm mt-1 text-red-600">{error}</p>
+                <div className="flex gap-2 mt-2">
+                  <Button variant="outline" size="small" onClick={handleGenerate}>
+                    Try Again
+                  </Button>
+                  <Button variant="ghost" size="small" onClick={() => router.push("/dashboard")}>
+                    Go Back
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -201,10 +221,7 @@ function GenerateImagePage() {
             <div className="flex-grow flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
               {isGenerating ? (
                 <div className="flex flex-col items-center justify-center p-8">
-                  <LoadingSpinner size="large" />
-                  <p className="mt-4 text-gray-600 dark:text-gray-400">
-                    Generating your image...
-                  </p>
+                  <GenerationStages active />
                 </div>
               ) : generatedImage ? (
                 <div className="relative w-full h-full min-h-[300px]">

@@ -10,7 +10,7 @@ import { Loader2, Wand2 } from "lucide-react";
 import { motion } from "framer-motion";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
-import LoadingSpinner from "@/app/components/ui/LoadingSpinner";
+import GenerationStages from "@/app/components/ui/GenerationStages";
 
 function CreateNew() {
   const router = useRouter();
@@ -22,13 +22,20 @@ function CreateNew() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
+  // Whether the failed request definitely never touched a credit
+  // (validation/auth/rate-limit failures, or a provider failure the
+  // server already refunded) — surfaced so the user never has to
+  // wonder if they lost a credit for nothing.
+  const [creditSafe, setCreditSafe] = useState(false);
 
   const onHandInputChange = (value, fieldName) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
     setError(""); // Clear any previous errors when form changes
   };
-  
+
   const handleGenerate = async () => {
+    if (isGenerating) return; // belt-and-suspenders against double-submit
+
     // Validate form data
     if (!formData.image) {
       setError("Please select an image");
@@ -42,9 +49,10 @@ function CreateNew() {
       setError("Please select a design type");
       return;
     }
-    
+
     setIsGenerating(true);
-    
+    setError("");
+
     try {
       // Call the API to generate the design
       const response = await axios.post("/api/generate-design", {
@@ -53,16 +61,22 @@ function CreateNew() {
         designType: formData.designType,
         additionalRequirements: formData.additionalRequirements,
       });
-      
+
       // Redirect to the dashboard or results page
       if (response.data.success) {
         router.push("/dashboard");
       } else {
         setError("Failed to generate design. Please try again.");
+        setCreditSafe(false);
       }
     } catch (error) {
       console.error("Error generating design:", error);
-      setError(error.response?.data?.error || "An error occurred. Please try again.");
+      const status = error.response?.status;
+      const message = error.response?.data?.error || "An error occurred. Please try again.";
+      setError(message);
+      // 400/401/402/429 never touch credits; a 500 only reaches here
+      // already refunded (the API always refunds before responding).
+      setCreditSafe(status !== undefined && status !== 200);
     } finally {
       setIsGenerating(false);
     }
@@ -142,35 +156,48 @@ function CreateNew() {
             whileHover={{ scale: isGenerating ? 1 : 1.02 }}
             whileTap={{ scale: isGenerating ? 1 : 0.98 }}
           >
-            <Button 
-              className="w-full mt-4" 
+            <Button
+              className="w-full mt-4"
               onClick={handleGenerate}
               disabled={isGenerating}
               variant="primary"
               size="large"
               icon={isGenerating ? null : <Wand2 className="h-4 w-4" />}
             >
-              {isGenerating ? (
-                <>
-                  <LoadingSpinner size="small" text="" />
-                  <span className="ml-2">Generating...</span>
-                </>
-              ) : (
-                "Generate Design"
-              )}
+              {isGenerating ? "Generating..." : "Generate Design"}
             </Button>
           </motion.div>
-          {error && (
-            <motion.p 
-              className="text-red-500 text-sm mt-2"
+
+          {isGenerating && <GenerationStages active className="mt-4" />}
+
+          {error && !isGenerating && (
+            <motion.div
+              className="mt-3 p-3 rounded-md border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3 }}
             >
-              {error}
-            </motion.p>
+              <p className="text-red-600 dark:text-red-400 text-sm">
+                We couldn&apos;t generate this design.
+              </p>
+              {creditSafe && (
+                <p className="text-red-500 dark:text-red-400 text-xs mt-1">
+                  Your credit wasn&apos;t charged.
+                </p>
+              )}
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{error}</p>
+              <div className="flex gap-2 mt-2">
+                <Button variant="outline" size="small" onClick={handleGenerate}>
+                  Try Again
+                </Button>
+                <Button variant="ghost" size="small" onClick={() => router.push("/dashboard")}>
+                  Go Back
+                </Button>
+              </div>
+            </motion.div>
           )}
-          <motion.p 
+
+          <motion.p
             className="text-gray-500 text-sm text-center mt-2"
             variants={itemVariants}
           >
