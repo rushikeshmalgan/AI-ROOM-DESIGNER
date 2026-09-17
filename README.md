@@ -1,5 +1,11 @@
 # AI Room Design
 
+## Product demo
+
+Not deployed yet — no live URL, no screenshots. `docs/deployment.md` and
+`docs/deployment-checklist.md` cover what deploying will look like; this
+section gets filled in once there's a real one to link, not before.
+
 ## What this is
 
 Upload a photo of your room, pick a style, and get back a redesigned version — then keep iterating on it. Say "change the sofa to a beige sectional" or "make the walls warmer" against a design you already have, and get a new version linked back to the one before it, without losing the room you started with. That refinement loop — not the one-shot generation — is the actual point of this project: most AI redesign tools give you a single result and stop; this one treats a design as something you converge on, not something you get right in one try.
@@ -25,7 +31,15 @@ Initial generation and refinement use different SDXL parameters, on purpose:
 | Initial generation | 0.8 | 7.5 | needs room to transform a real photo into a styled room |
 | Refinement | 0.5 | 8.5 | should change less of an already-styled image; lower strength needs higher guidance so the one requested change still comes through instead of being smoothed away |
 
-**Honest caveat:** SDXL image-to-image has no masking or inpainting — there is no way to say "only touch this region." Lower strength biases the model toward smaller, more targeted changes, but it cannot *guarantee* that only the requested object changes. Product copy says "Refine this design," never "guaranteed to change only one thing." The natural next step, if this turns out to matter in practice, is segmentation/masking so a refinement can be scoped to an actual region instead of the whole frame — worth building once there's evidence of where prompt-only refinement actually fails, not before.
+**Honest caveat:** SDXL image-to-image has no masking or inpainting — there is no way to say "only touch this region." Lower strength biases the model toward smaller, more targeted changes, but it cannot *guarantee* that only the requested object changes. Product copy says "Refine this design," never "guaranteed to change only one thing." The natural next step, if this turns out to matter in practice, is segmentation/masking so a refinement can be scoped to an actual region instead of the whole frame — worth building once there's evidence of where prompt-only refinement actually fails, not before (see `docs/ai-quality-decision-framework.md`).
+
+---
+
+## AI generation architecture
+
+Route handlers depend on `ImageGenerationProvider` (`lib/generation/types.ts` — `generate()`/`refine()`), not on Replicate or its SDK directly. `ReplicateSdxlProvider` (`lib/generation/providers.ts`) is the only implementation today, wrapping the same `config/replicateConfig.ts` logic that's always been there — this is a seam, not a rewrite. The point: swapping to a self-hosted open-weight model later (FLUX, Stable Diffusion, a custom LoRA) means writing a new class against the same interface, not touching route handlers, credit logic, or the data model. Ideogram (`generate-image`) is deliberately **not** wired through this interface — it's a free-text-prompt, generate-only model with no natural fit to `GenerateInput`'s room/style shape, and forcing it in would lose information rather than abstract anything real.
+
+`GenerationService.runGenerationAttempt()` (`lib/generation/generationService.ts`) wraps every provider call with a `generations` table row: inserted as `pending`/`processing` before the call, updated to `completed` or `failed` after — a provider call that resolves without throwing but returns zero images is still recorded as `failed`, not `completed`, since the table is meant to answer "did this attempt produce something usable," not just "did the HTTP call survive." This still runs synchronously within one request (no queue, no polling) — see `PROJECT_AUDIT.md`'s "why not go async yet" for when that would change.
 
 ---
 
@@ -71,9 +85,15 @@ If either Replicate call fails or returns nothing, the route calls `refundCredit
 
 **`users`** — `id` (serial PK), `name`, `email` (`.unique()`), `imageUrl`, `credits` (`.default(3)`), `clerkId` (`.unique()`).
 
-**`designs`** — `id` (serial PK), `userId` (Clerk ID, FK → `users.clerkId`, `ON DELETE CASCADE`), `originalImageUrl`, `generatedImageUrl`, `roomType`, `designType`, `additionalRequirements`, `createdAt`, `parentDesignId` (nullable, self-referencing FK → `designs.id`, `ON DELETE SET NULL`, indexed).
+**`designs`** — `id` (serial PK), `userId` (Clerk ID, FK → `users.clerkId`, `ON DELETE CASCADE`), `originalImageUrl`, `generatedImageUrl`, `roomType`, `designType`, `additionalRequirements`, `createdAt`, `parentDesignId` (nullable, self-referencing FK → `designs.id`, `ON DELETE SET NULL`, indexed), `isPublic` (default `false`).
 
 `originalImageUrl` is carried forward unchanged through an entire refinement chain, so a v3 design can still be compared back to the actual starting photo, not just its immediate parent.
+
+**`generations`** — one row per provider *attempt*, not per successful design: `status` (`pending`/`processing`/`completed`/`failed`), `generationType` (`initial`/`refinement`), `provider`, `parentDesignId` and `designId` (both nullable FKs → `designs.id`, `ON DELETE SET NULL`), `errorMessage`, `latencyMs`. No FK on `userId` — like `events`, this is an audit log, not a core relational entity, and must be able to record an attempt even if a brand-new user's `users` row hasn't been provisioned yet.
+
+**`credit_transactions`** — an auditable ledger alongside Redis: `type` (`grant`/`generation`/`refund`/`purchase`/`adjustment`), `amount`, `balanceAfter`, `generationId` (nullable FK → `generations.id`). Redis stays the fast, atomic source of truth for whether a request is allowed to proceed; this table exists so "why does this user have 2 credits" has an actual answer instead of just a current balance.
+
+**`events`** — product analytics; see "Analytics and feedback" below.
 
 ### Auth flow
 
@@ -81,7 +101,7 @@ If either Replicate call fails or returns nothing, the route calls `refundCredit
 
 ### Credits and rate limiting
 
-Both generation routes and the refine route share one Redis-backed gate: a sliding-window rate limiter (10 req/min per user via `@upstash/ratelimit`) and an atomic Lua check-and-decrement for credits (`credits:{userId}` in Redis). Postgres `users.credits` is a display-only mirror, updated best-effort after a successful generation — Redis is the source of truth enforcement runs against.
+Both generation routes and the refine route share one Redis-backed gate: a sliding-window rate limiter (10 req/min per user via `@upstash/ratelimit`) and an atomic Lua check-and-decrement for credits (`credits:{userId}` in Redis). Postgres `users.credits` is a display-only mirror, updated best-effort after a successful generation — Redis is the source of truth enforcement runs against. Every decrement/refund also writes a `credit_transactions` row (best-effort, never blocks the request) so the balance has an audit trail, not just a current number.
 
 ### Public sharing
 
@@ -153,4 +173,15 @@ npm run build
 - Client-side image downscaling before upload (canvas-based, falls back to the original file on any failure).
 - Structured per-generation logging (`lib/observability.ts`) and product-analytics event tracking (`lib/analytics.ts`) across all three generation paths — provider, latency, success/failure, and the design/parent IDs involved.
 - Explicit, revocation-free (a known gap) public sharing with owner-only opt-in and social-preview metadata.
-- 99 Vitest tests (authentication, authorization including cross-user ownership checks, rate limiting, credit exhaustion/refund, DB-write-failure fallbacks, analytics tracking) plus a small Playwright E2E suite covering the create → generate → refine → share flow end to end against in-memory test doubles — see `e2e/README.md`.
+- A provider-agnostic generation layer (`ImageGenerationProvider`) plus a `generations` audit table and a `credit_transactions` ledger — see "AI generation architecture" above.
+- 116 Vitest tests (authentication, authorization including cross-user ownership checks, rate limiting, credit exhaustion/refund, DB-write-failure fallbacks, analytics tracking, generation-attempt lifecycle) plus a small Playwright E2E suite covering the create → generate → refine → share flow end to end against in-memory test doubles — see `e2e/README.md`.
+
+---
+
+## More documentation
+
+- `PROJECT_AUDIT.md` — the full repository audit and architecture rationale behind the provider abstraction and data-model changes.
+- `docs/product-readiness.md` — an honest PASS/NOT TESTED breakdown per area.
+- `docs/interview-guide.md` — technical Q&A grounded in what's actually implemented.
+- `docs/deployment.md` / `docs/deployment-checklist.md` — how to deploy, and the checklist to run through first.
+- `docs/db-migration-checklist.md`, `docs/analytics-funnel.md`, `docs/ai-quality-decision-framework.md`, `docs/growth-experiments.md`, `docs/beta-user-learning-guide.md`, `docs/manual-qa-checklist.md`, `docs/beta-readiness-checklist.md` — see each for its specific scope.
