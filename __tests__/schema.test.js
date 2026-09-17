@@ -130,16 +130,29 @@ describe('schema: designs table', () => {
     expect(c.hasDefault).toBe(true);
   });
 
+  it('parentDesignId — nullable integer, self-referencing FK (design versioning)', () => {
+    const c = col(designs, 'parentDesignId');
+    expect(c.columnType).toBe('PgInteger');
+    expect(c.notNull).toBe(false);
+    const fks = designs[Symbol.for('drizzle:PgInlineForeignKeys')] ?? [];
+    const selfFk = fks.find((fk) => fk.reference().foreignTable === designs);
+    expect(selfFk).toBeDefined();
+    expect(selfFk.reference().columns.map((c2) => c2.name)).toEqual(['parentDesignId']);
+    expect(selfFk.reference().foreignColumns.map((c2) => c2.name)).toEqual(['id']);
+    expect(selfFk.onDelete).toBe('set null');
+  });
+
   it('userId declares an FK to users.clerkId (matches drizzle/0002_add_clerk_id_fk.sql)', () => {
     // drizzle/0002_add_clerk_id_fk.sql added a real FK at the DB level
     // (designs.userId -> users.clerkId, ON DELETE CASCADE). schema.ts
     // must declare it too via .references() so drizzle-kit and the type
     // system agree with what's actually in the database.
     const fks = designs[Symbol.for('drizzle:PgInlineForeignKeys')] ?? [];
-    expect(fks).toHaveLength(1);
-    const reference = fks[0].reference();
+    const userFk = fks.find((fk) => fk.reference().foreignTable === users);
+    expect(userFk).toBeDefined();
+    const reference = userFk.reference();
     expect(reference.columns.map((c) => c.name)).toEqual(['userId']);
     expect(reference.foreignColumns.map((c) => c.name)).toEqual(['clerkId']);
-    expect(fks[0].onDelete).toBe('cascade');
+    expect(userFk.onDelete).toBe('cascade');
   });
 });

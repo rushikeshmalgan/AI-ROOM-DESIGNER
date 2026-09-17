@@ -29,6 +29,13 @@
       "when": 1789640331478,
       "tag": "0003_reconcile_schema_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789640610044,
+      "tag": "0004_add_design_versioning",
+      "breakpoints": true
     }
   ]
 }

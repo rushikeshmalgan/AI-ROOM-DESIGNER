@@ -5,6 +5,8 @@ import {
   integer,
   text,
   timestamp,
+  index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -47,7 +49,18 @@ export const designs = pgTable("designs", {
   additionalRequirements: text("additionalRequirements"),
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+
+  // Self-reference: null for an original generation, set for a
+  // refinement produced from another design. ON DELETE SET NULL so
+  // deleting a parent design doesn't cascade-delete its refinements —
+  // they just become roots of their own chain.
+  parentDesignId: integer("parentDesignId").references(
+    (): AnyPgColumn => designs.id,
+    { onDelete: "set null" }
+  ),
+}, (table) => ({
+  parentDesignIdIdx: index("designs_parentDesignId_idx").on(table.parentDesignId),
+}));
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
