@@ -12,7 +12,7 @@ function DashboardLayout({children}) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className='pt-20 px-10 md:px-20 lg:px-40 xl:px-60'
+        className='pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto'
       >
         {children}
       </motion.div>

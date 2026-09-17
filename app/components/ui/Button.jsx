@@ -18,9 +18,9 @@ export default function Button({
   // Variants
   const variants = {
     primary: 'bg-purple-600 hover:bg-purple-700 text-white',
-    secondary: 'bg-white hover:bg-gray-100 text-gray-900 border border-gray-300',
-    outline: 'bg-transparent hover:bg-gray-100 text-purple-600 border border-purple-600',
-    ghost: 'bg-transparent hover:bg-gray-100 text-gray-700',
+    secondary: 'bg-white hover:bg-gray-100 text-gray-900 border border-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-100 dark:border-gray-600',
+    outline: 'bg-transparent hover:bg-gray-100 text-purple-600 border border-purple-600 dark:hover:bg-gray-800 dark:text-purple-400 dark:border-purple-400',
+    ghost: 'bg-transparent hover:bg-gray-100 text-gray-700 dark:hover:bg-gray-800 dark:text-gray-300',
     danger: 'bg-red-600 hover:bg-red-700 text-white',
   };
 

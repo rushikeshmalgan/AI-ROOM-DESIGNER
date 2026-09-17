@@ -81,13 +81,13 @@ function EmptyState() {
         variants={itemVariants}
       >
         <motion.h2
-          className="text-3xl font-extrabold text-gray-800 mb-4"
+          className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mb-4"
           variants={itemVariants}
         >
           Transform Your Space
         </motion.h2>
         <motion.p
-          className="text-gray-600 max-w-lg mx-auto mb-6"
+          className="text-gray-600 dark:text-gray-300 max-w-lg mx-auto mb-6"
           variants={itemVariants}
         >
           Upload your room. Choose a style. Then keep refining it — one change
