@@ -4,6 +4,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
 import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
+import { newGenerationId, logGeneration } from '@/lib/observability';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateImageRequestBody {
@@ -66,6 +67,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // From here on, a credit has been spent — any failure to actually
     // produce an image must refund it before returning.
+    const generationId = newGenerationId();
+    const startTime = Date.now();
     let imageUrl: string | null = null;
     try {
       imageUrl = await generateIdeogramImage({
@@ -75,6 +78,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     } catch (genError) {
       console.error('Error generating image with Ideogram:', genError);
+      logGeneration({
+        generationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
+        designStyle: style || 'photographic', durationMs: Date.now() - startTime,
+        success: false, failureReason: genError instanceof Error ? genError.message : 'unknown error',
+      });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
         { error: 'Failed to generate image. Your credit was not charged.', creditsRemaining: remaining },
@@ -83,6 +91,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     if (!imageUrl) {
+      logGeneration({
+        generationId, userId: user.id, provider: 'replicate-ideogram', generationType: 'initial',
+        designStyle: style || 'photographic', durationMs: Date.now() - startTime,
+        success: false, failureReason: 'empty result from provider',
+      });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
         { error: 'Failed to generate image. Your credit was not charged.', creditsRemaining: remaining },
@@ -100,8 +113,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     // If the DB write fails, signal partial success — the image was
     // generated but won't persist across sessions.
     let saved = true;
+    let savedId: number | null = null;
     try {
-      await db.insert(designs).values({
+      const inserted = await db.insert(designs).values({
         userId: user.id,
         originalImageUrl: '',
         generatedImageUrl: imageUrl,
@@ -109,11 +123,18 @@ export async function POST(request: Request): Promise<NextResponse> {
         designType: style || 'photographic',
         additionalRequirements: prompt,
         createdAt: new Date(),
-      });
+      }).returning({ id: designs.id });
+      savedId = inserted[0]?.id ?? null;
     } catch (dbError) {
       console.error('Failed to save generated image to designs:', dbError);
       saved = false;
     }
+
+    logGeneration({
+      generationId, userId: user.id, designId: savedId,
+      provider: 'replicate-ideogram', generationType: 'initial',
+      designStyle: style || 'photographic', durationMs: Date.now() - startTime, success: true,
+    });
 
     return NextResponse.json({
       success: true,

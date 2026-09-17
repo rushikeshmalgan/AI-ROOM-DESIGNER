@@ -4,6 +4,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
 import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
+import { newGenerationId, logGeneration } from '@/lib/observability';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateDesignRequestBody {
@@ -65,6 +66,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // From here on, a credit has been spent — any failure to actually
     // produce a design must refund it before returning.
+    const generationId = newGenerationId();
+    const startTime = Date.now();
     let generatedDesigns: string[] | undefined;
     try {
       generatedDesigns = await generateRoomDesign({
@@ -75,6 +78,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     } catch (genError) {
       console.error('Error generating room design:', genError);
+      logGeneration({
+        generationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
+        roomType, designStyle: designType, durationMs: Date.now() - startTime,
+        success: false, failureReason: genError instanceof Error ? genError.message : 'unknown error',
+      });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
         { error: 'Failed to generate design. Your credit was not charged.', creditsRemaining: remaining },
@@ -83,6 +91,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     if (!generatedDesigns || generatedDesigns.length === 0) {
+      logGeneration({
+        generationId, userId: user.id, provider: 'replicate-sdxl', generationType: 'initial',
+        roomType, designStyle: designType, durationMs: Date.now() - startTime,
+        success: false, failureReason: 'empty result from provider',
+      });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
         { error: 'Failed to generate design. Your credit was not charged.', creditsRemaining: remaining },
@@ -111,6 +124,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       console.error('Failed to save generated design to DB:', dbError);
       saved = false;
     }
+
+    logGeneration({
+      generationId, userId: user.id, designId: savedDesign?.id ?? null,
+      provider: 'replicate-sdxl', generationType: 'initial', roomType, designStyle: designType,
+      durationMs: Date.now() - startTime, success: true,
+    });
 
     // Async best-effort: write decremented credits back to Postgres so
     // the dashboard display stays roughly in sync.

@@ -4,6 +4,7 @@ import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
 import { refineRoomDesign } from '@/config/replicateConfig';
 import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
+import { newGenerationId, logGeneration } from '@/lib/observability';
 import { eq } from 'drizzle-orm';
 
 export const MAX_INSTRUCTION_LENGTH = 300;
@@ -94,6 +95,8 @@ export async function POST(
 
     // From here on, a credit has been spent — any failure to actually
     // produce a refinement must refund it before returning.
+    const generationId = newGenerationId();
+    const startTime = Date.now();
     let refinedDesigns: string[] | undefined;
     try {
       refinedDesigns = await refineRoomDesign({
@@ -106,6 +109,13 @@ export async function POST(
       });
     } catch (genError) {
       console.error('Error refining room design:', genError);
+      logGeneration({
+        generationId, userId: user.id, parentDesignId: parent.id,
+        provider: 'replicate-sdxl', generationType: 'refinement',
+        roomType: parent.roomType, designStyle: parent.designType,
+        durationMs: Date.now() - startTime, success: false,
+        failureReason: genError instanceof Error ? genError.message : 'unknown error',
+      });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
         { error: 'Failed to refine design. Your credit was not charged.', creditsRemaining: remaining },
@@ -114,6 +124,12 @@ export async function POST(
     }
 
     if (!refinedDesigns || refinedDesigns.length === 0) {
+      logGeneration({
+        generationId, userId: user.id, parentDesignId: parent.id,
+        provider: 'replicate-sdxl', generationType: 'refinement',
+        roomType: parent.roomType, designStyle: parent.designType,
+        durationMs: Date.now() - startTime, success: false, failureReason: 'empty result from provider',
+      });
       const remaining = await refundCredit(user.id);
       return NextResponse.json(
         { error: 'Failed to refine design. Your credit was not charged.', creditsRemaining: remaining },
@@ -145,6 +161,13 @@ export async function POST(
       console.error('Failed to save refined design to DB:', dbError);
       saved = false;
     }
+
+    logGeneration({
+      generationId, userId: user.id, designId: savedDesign?.id ?? null, parentDesignId: parent.id,
+      provider: 'replicate-sdxl', generationType: 'refinement',
+      roomType: parent.roomType, designStyle: parent.designType,
+      durationMs: Date.now() - startTime, success: true,
+    });
 
     if (email) {
       void syncCreditsToDb(email, creditResult.remaining);

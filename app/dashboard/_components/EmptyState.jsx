@@ -80,18 +80,18 @@ function EmptyState() {
         className="mt-10 text-center"
         variants={itemVariants}
       >
-        <motion.h2 
+        <motion.h2
           className="text-3xl font-extrabold text-gray-800 mb-4"
           variants={itemVariants}
         >
           Transform Your Space
         </motion.h2>
-        <motion.p 
+        <motion.p
           className="text-gray-600 max-w-lg mx-auto mb-6"
           variants={itemVariants}
         >
-          Explore beautiful interior designs and bring your dream room to life
-          with our AI-powered redesign feature.
+          Upload your room. Choose a style. Then keep refining it — one change
+          at a time — until it feels right.
         </motion.p>
         <motion.div variants={itemVariants}>
           <Button

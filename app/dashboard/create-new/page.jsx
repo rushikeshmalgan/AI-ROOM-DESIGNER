@@ -110,17 +110,19 @@ function CreateNew() {
       animate="visible"
       variants={containerVariants}
     >
-      <motion.h2 
+      <motion.h2
         className="text-3xl font-extrabold text-purple-700 dark:text-purple-400 tracking-tight mb-3 sm:mb-4 text-center"
         variants={itemVariants}
       >
-        Experience the Future of Interior Design
+        Redesign your room, then keep refining it
       </motion.h2>
-      <motion.p 
+      <motion.p
         className="text-base text-gray-600 dark:text-gray-300 text-center max-w-xl mb-8 sm:mb-10"
         variants={itemVariants}
       >
-        Transform your living spaces effortlessly with our intuitive tools.
+        Upload your room, pick a style, and generate a first design. Not quite right?
+        Just describe what to change — the sofa, the wall color, the lighting — and get
+        a new version without losing what you already have.
       </motion.p>
 
       <Card className="w-full max-w-5xl p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8" shadow="lg">
