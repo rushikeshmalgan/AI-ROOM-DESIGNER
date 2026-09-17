@@ -3,7 +3,7 @@ import { generateIdeogramImage } from '@/config/ideogramConfig';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
-import { decrementCredit, checkRateLimit, syncCreditsToDb } from '@/lib/credits';
+import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateImageRequestBody {
@@ -44,15 +44,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // Credits gate — atomic Redis decrement; 402 if exhausted
-    const creditResult = await decrementCredit(user.id);
-    if (!creditResult.ok) {
-      return NextResponse.json(
-        { error: 'Insufficient credits. Upgrade or wait for refill.' },
-        { status: 402 }
-      );
-    }
-
+    // Validate the request BEFORE charging a credit — a 400 must never
+    // cost the user anything.
     const { prompt, style, aspectRatio } = await request.json() as GenerateImageRequestBody;
 
     if (!prompt) {
@@ -62,17 +55,37 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const imageUrl = await generateIdeogramImage({
-      prompt,
-      style: style || 'photographic',
-      aspectRatio: aspectRatio || '1:1',
-      outputDir: './public/generated',
-      filename: `ideogram-${Date.now()}.png`,
-    });
+    // Credits gate — atomic Redis decrement; 402 if exhausted
+    const creditResult = await decrementCredit(user.id);
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        { error: 'Insufficient credits. Upgrade or wait for refill.' },
+        { status: 402 }
+      );
+    }
+
+    // From here on, a credit has been spent — any failure to actually
+    // produce an image must refund it before returning.
+    let imageUrl: string | null = null;
+    try {
+      imageUrl = await generateIdeogramImage({
+        prompt,
+        style: style || 'photographic',
+        aspectRatio: aspectRatio || '1:1',
+      });
+    } catch (genError) {
+      console.error('Error generating image with Ideogram:', genError);
+      const remaining = await refundCredit(user.id);
+      return NextResponse.json(
+        { error: 'Failed to generate image. Your credit was not charged.', creditsRemaining: remaining },
+        { status: 500 }
+      );
+    }
 
     if (!imageUrl) {
+      const remaining = await refundCredit(user.id);
       return NextResponse.json(
-        { error: 'Failed to generate image' },
+        { error: 'Failed to generate image. Your credit was not charged.', creditsRemaining: remaining },
         { status: 500 }
       );
     }

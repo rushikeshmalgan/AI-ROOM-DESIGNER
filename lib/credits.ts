@@ -64,6 +64,18 @@ export async function decrementCredit(userId: string): Promise<{ ok: boolean; re
   return { ok: result[0] === 1, remaining: result[1] };
 }
 
+// Atomic refund — call exactly once per failed generation, after a
+// successful decrementCredit, when the AI provider itself fails (not
+// when generation succeeds but a downstream step like the DB save
+// fails — the provider cost was already incurred at that point).
+// INCR is atomic in Redis, so concurrent refunds/decrements for the
+// same user can't race each other into an inconsistent count.
+export async function refundCredit(userId: string): Promise<number> {
+  const redis = getRedis();
+  const key = `${CREDITS_PREFIX}${userId}`;
+  return await redis.incr(key);
+}
+
 // Async best-effort write-back to Postgres after a successful generation.
 // Postgres `users` is keyed by email (not Clerk ID), so we need the email.
 export async function syncCreditsToDb(email: string, credits: number): Promise<void> {

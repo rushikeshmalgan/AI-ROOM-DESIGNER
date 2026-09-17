@@ -8,6 +8,12 @@ const { fakeRedis, fakeStore } = vi.hoisted(() => {
       store[key] = String(value);
       return 'OK';
     }),
+    incr: vi.fn(async (key: string) => {
+      const current = store[key] ? parseInt(store[key], 10) : 0;
+      const next = current + 1;
+      store[key] = String(next);
+      return next;
+    }),
     eval: vi.fn(async (_script: string, keys: string[], _args: unknown[]) => {
       const key = keys[0];
       const current = store[key];
@@ -53,7 +59,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn(() => ({})),
 }));
 
-import { getCredits, decrementCredit, syncCreditsToDb } from '@/lib/credits';
+import { getCredits, decrementCredit, refundCredit, syncCreditsToDb } from '@/lib/credits';
 import * as dbModule from '@/config/db';
 
 // The mock factory exposes __mockUpdate for test introspection, but
@@ -105,6 +111,23 @@ describe('lib/credits', () => {
     it('returns ok:false when key does not exist', async () => {
       const result = await decrementCredit('nonexistent');
       expect(result).toEqual({ ok: false, remaining: 0 });
+    });
+  });
+
+  describe('refundCredit', () => {
+    it('increments credits back up by 1 after a decrement', async () => {
+      fakeStore['credits:user123'] = '2'; // simulates post-decrement state
+      const remaining = await refundCredit('user123');
+      expect(remaining).toBe(3);
+      expect(fakeStore['credits:user123']).toBe('3');
+    });
+
+    it('is atomic per-user via INCR, independent of concurrent decrements', async () => {
+      fakeStore['credits:userA'] = '0';
+      const remaining = await refundCredit('userA');
+      expect(remaining).toBe(1);
+      // A different user's balance is untouched.
+      expect(fakeStore['credits:userB']).toBeUndefined();
     });
   });
 

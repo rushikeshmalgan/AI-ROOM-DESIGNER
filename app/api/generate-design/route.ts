@@ -3,7 +3,7 @@ import { generateRoomDesign } from '@/config/replicateConfig';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/config/db';
 import { designs, users } from '@/config/schema';
-import { decrementCredit, checkRateLimit, syncCreditsToDb } from '@/lib/credits';
+import { decrementCredit, checkRateLimit, syncCreditsToDb, refundCredit } from '@/lib/credits';
 import { eq } from 'drizzle-orm';
 
 export interface GenerateDesignRequestBody {
@@ -42,15 +42,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // Credits gate — atomic Redis decrement; 402 if exhausted
-    const creditResult = await decrementCredit(user.id);
-    if (!creditResult.ok) {
-      return NextResponse.json(
-        { error: 'Insufficient credits. Upgrade or wait for refill.' },
-        { status: 402 }
-      );
-    }
-
+    // Validate the request BEFORE charging a credit — a 400 must never
+    // cost the user anything.
     const { imageUrl, roomType, designType, additionalRequirements } =
       await request.json() as GenerateDesignRequestBody;
 
@@ -61,31 +54,63 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const generatedDesigns = await generateRoomDesign({
-      imageUrl,
-      roomType,
-      designStyle: designType,
-      additionalRequirements,
-    });
+    // Credits gate — atomic Redis decrement; 402 if exhausted
+    const creditResult = await decrementCredit(user.id);
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        { error: 'Insufficient credits. Upgrade or wait for refill.' },
+        { status: 402 }
+      );
+    }
+
+    // From here on, a credit has been spent — any failure to actually
+    // produce a design must refund it before returning.
+    let generatedDesigns: string[] | undefined;
+    try {
+      generatedDesigns = await generateRoomDesign({
+        imageUrl,
+        roomType,
+        designStyle: designType,
+        additionalRequirements,
+      });
+    } catch (genError) {
+      console.error('Error generating room design:', genError);
+      const remaining = await refundCredit(user.id);
+      return NextResponse.json(
+        { error: 'Failed to generate design. Your credit was not charged.', creditsRemaining: remaining },
+        { status: 500 }
+      );
+    }
 
     if (!generatedDesigns || generatedDesigns.length === 0) {
+      const remaining = await refundCredit(user.id);
       return NextResponse.json(
-        { error: 'Failed to generate design' },
+        { error: 'Failed to generate design. Your credit was not charged.', creditsRemaining: remaining },
         { status: 500 }
       );
     }
 
     const generatedImageUrl = generatedDesigns[0];
 
-    const savedDesign = await db.insert(designs).values({
-      userId: user.id,
-      originalImageUrl: imageUrl,
-      generatedImageUrl,
-      roomType,
-      designType,
-      additionalRequirements: additionalRequirements || '',
-      createdAt: new Date(),
-    }).returning();
+    // The provider call succeeded — the credit is correctly spent from
+    // here even if the DB write below fails; only surface a warning.
+    let savedDesign: typeof designs.$inferSelect | undefined;
+    let saved = true;
+    try {
+      const inserted = await db.insert(designs).values({
+        userId: user.id,
+        originalImageUrl: imageUrl,
+        generatedImageUrl,
+        roomType,
+        designType,
+        additionalRequirements: additionalRequirements || '',
+        createdAt: new Date(),
+      }).returning();
+      savedDesign = inserted[0];
+    } catch (dbError) {
+      console.error('Failed to save generated design to DB:', dbError);
+      saved = false;
+    }
 
     // Async best-effort: write decremented credits back to Postgres so
     // the dashboard display stays roughly in sync.
@@ -96,9 +121,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       success: true,
-      design: savedDesign[0],
+      design: savedDesign ?? null,
       generatedImageUrl,
       creditsRemaining: creditResult.remaining,
+      saved,
+      ...(saved ? {} : { warning: 'Design generated but could not be saved to your gallery. Please save it manually.' }),
     });
 
   } catch (error) {

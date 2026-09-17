@@ -41,13 +41,14 @@ vi.mock('@/lib/credits', () => ({
   decrementCredit: vi.fn(),
   checkRateLimit: vi.fn(),
   syncCreditsToDb: vi.fn(),
+  refundCredit: vi.fn(),
 }));
 
 // ── Imports (after mocks) ────────────────────────────────────────────────────
 import { currentUser } from '@clerk/nextjs/server';
 import { generateRoomDesign } from '@/config/replicateConfig';
 import * as dbModule from '@/config/db';
-import { decrementCredit, checkRateLimit } from '@/lib/credits';
+import { decrementCredit, checkRateLimit, refundCredit } from '@/lib/credits';
 import { POST } from '@/app/api/generate-design/route';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ describe('POST /api/generate-design', () => {
     vi.clearAllMocks();
     vi.mocked(checkRateLimit).mockResolvedValue({ success: true, remaining: 9, reset: Date.now() + 60000 });
     vi.mocked(decrementCredit).mockResolvedValue({ ok: true, remaining: 2 });
+    vi.mocked(refundCredit).mockResolvedValue(3);
     // Backfill select returns empty (no existing user) by default
     dbModule.__mockWhere.mockResolvedValue([]);
   });
@@ -164,7 +166,7 @@ describe('POST /api/generate-design', () => {
   });
 
   // ── 400 — missing imageUrl ─────────────────────────────────────────────────
-  it('missing imageUrl → 400', async () => {
+  it('missing imageUrl → 400, no credit charged', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
 
     const res = await POST(makeRequest({ roomType: 'kitchen', designType: 'Industrial' }));
@@ -173,6 +175,7 @@ describe('POST /api/generate-design', () => {
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/imageUrl/);
     expect(generateRoomDesign).not.toHaveBeenCalled();
+    expect(decrementCredit).not.toHaveBeenCalled();
   });
 
   // ── 400 — missing roomType ─────────────────────────────────────────────────
@@ -187,6 +190,7 @@ describe('POST /api/generate-design', () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/roomType/);
+    expect(decrementCredit).not.toHaveBeenCalled();
   });
 
   // ── 400 — missing designType ───────────────────────────────────────────────
@@ -201,10 +205,11 @@ describe('POST /api/generate-design', () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/designType/);
+    expect(decrementCredit).not.toHaveBeenCalled();
   });
 
-  // ── 500 — Replicate returns empty array ────────────────────────────────────
-  it('Replicate returns empty array → 500 "Failed to generate design"', async () => {
+  // ── 500 — Replicate returns empty array → credit refunded ─────────────────
+  it('Replicate returns empty array → 500, credit refunded', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
     vi.mocked(generateRoomDesign).mockResolvedValue([]);
 
@@ -216,12 +221,16 @@ describe('POST /api/generate-design', () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toBe('Failed to generate design');
+    expect(body.error).toMatch(/not charged/);
+    expect(body.creditsRemaining).toBe(3);
     expect(dbModule.__mockInsert).not.toHaveBeenCalled();
+    expect(decrementCredit).toHaveBeenCalledTimes(1);
+    expect(refundCredit).toHaveBeenCalledTimes(1);
+    expect(refundCredit).toHaveBeenCalledWith(AUTHED_USER.id);
   });
 
-  // ── 500 — Replicate returns null ───────────────────────────────────────────
-  it('Replicate returns null → 500 "Failed to generate design"', async () => {
+  // ── 500 — Replicate returns null → credit refunded ─────────────────────────
+  it('Replicate returns null → 500, credit refunded', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
     vi.mocked(generateRoomDesign).mockResolvedValue(null);
 
@@ -233,11 +242,12 @@ describe('POST /api/generate-design', () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toBe('Failed to generate design');
+    expect(body.error).toMatch(/not charged/);
+    expect(refundCredit).toHaveBeenCalledTimes(1);
   });
 
-  // ── 500 — Replicate throws ─────────────────────────────────────────────────
-  it('Replicate throws → 500 "Failed to generate room design"', async () => {
+  // ── 500 — Replicate throws → credit refunded ────────────────────────────────
+  it('Replicate throws → 500, credit refunded (not lost)', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
     vi.mocked(generateRoomDesign).mockRejectedValue(new Error('Replicate API error'));
 
@@ -249,7 +259,33 @@ describe('POST /api/generate-design', () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toBe('Failed to generate room design');
+    expect(body.error).toMatch(/not charged/);
+    expect(body.creditsRemaining).toBe(3);
+    expect(refundCredit).toHaveBeenCalledTimes(1);
+    expect(refundCredit).toHaveBeenCalledWith(AUTHED_USER.id);
+    expect(dbModule.__mockInsert).not.toHaveBeenCalled();
+  });
+
+  // ── generation succeeds but DB save fails → 200 with saved:false ───────────
+  it('DB insert fails after successful generation → 200, saved:false, no refund', async () => {
+    vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
+    vi.mocked(generateRoomDesign).mockResolvedValue([GENERATED_URL]);
+    dbModule.__mockInsert.mockImplementationOnce(() => { throw new Error('DB write failed'); });
+
+    const res = await POST(makeRequest({
+      imageUrl: 'https://example.com/room.jpg',
+      roomType: 'living room',
+      designType: 'Rustic',
+    }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.generatedImageUrl).toBe(GENERATED_URL);
+    expect(body.saved).toBe(false);
+    expect(body.warning).toMatch(/could not be saved/);
+    // The provider call succeeded and cost money — this must NOT be refunded.
+    expect(refundCredit).not.toHaveBeenCalled();
   });
 
   // ── credits now enforced ─────────────────────────────────────────────────────

@@ -37,12 +37,13 @@ vi.mock('@/lib/credits', () => ({
   decrementCredit: vi.fn(),
   checkRateLimit: vi.fn(),
   syncCreditsToDb: vi.fn(),
+  refundCredit: vi.fn(),
 }));
 
 import { currentUser } from '@clerk/nextjs/server';
 import { generateIdeogramImage } from '@/config/ideogramConfig';
 import * as dbModule from '@/config/db';
-import { decrementCredit, checkRateLimit } from '@/lib/credits';
+import { decrementCredit, checkRateLimit, refundCredit } from '@/lib/credits';
 import { POST } from '@/app/api/generate-image/route';
 
 function makeRequest(body) {
@@ -57,6 +58,7 @@ describe('POST /api/generate-image', () => {
     vi.clearAllMocks();
     vi.mocked(checkRateLimit).mockResolvedValue({ success: true, remaining: 9, reset: Date.now() + 60000 });
     vi.mocked(decrementCredit).mockResolvedValue({ ok: true, remaining: 2 });
+    vi.mocked(refundCredit).mockResolvedValue(3);
     // Backfill select returns empty (no existing user) by default
     dbModule.__mockWhere.mockResolvedValue([]);
   });
@@ -117,7 +119,7 @@ describe('POST /api/generate-image', () => {
     expect(generateIdeogramImage).not.toHaveBeenCalled();
   });
 
-  it('400 — missing prompt → bad request', async () => {
+  it('400 — missing prompt → bad request, no credit charged', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
 
     const res = await POST(makeRequest({ style: 'photographic' }));
@@ -126,9 +128,10 @@ describe('POST /api/generate-image', () => {
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/prompt/);
     expect(generateIdeogramImage).not.toHaveBeenCalled();
+    expect(decrementCredit).not.toHaveBeenCalled();
   });
 
-  it('500 — Ideogram returns null → failed to generate image', async () => {
+  it('500 — Ideogram returns null → credit refunded', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
     vi.mocked(generateIdeogramImage).mockResolvedValue(null);
 
@@ -136,14 +139,30 @@ describe('POST /api/generate-image', () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toBe('Failed to generate image');
+    expect(body.error).toMatch(/not charged/);
+    expect(body.creditsRemaining).toBe(3);
+    expect(refundCredit).toHaveBeenCalledTimes(1);
+    expect(refundCredit).toHaveBeenCalledWith(AUTHED_USER.id);
+  });
+
+  it('500 — Ideogram throws → credit refunded', async () => {
+    vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
+    vi.mocked(generateIdeogramImage).mockRejectedValue(new Error('Replicate API error'));
+
+    const res = await POST(makeRequest({ prompt: 'A sunroom' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toMatch(/not charged/);
+    expect(refundCredit).toHaveBeenCalledTimes(1);
+    expect(dbModule.__mockInsert).not.toHaveBeenCalled();
   });
 
   it('DB insert fails → 200 with saved:false and warning, imageUrl still returned', async () => {
     vi.mocked(currentUser).mockResolvedValue(AUTHED_USER);
     vi.mocked(generateIdeogramImage).mockResolvedValue(GENERATED_URL);
     // Simulate DB insert failure
-    dbModule.__mockInsert.mockImplementation(() => { throw new Error('DB write failed'); });
+    dbModule.__mockInsert.mockImplementationOnce(() => { throw new Error('DB write failed'); });
 
     const res = await POST(makeRequest({ prompt: 'A cozy reading nook' }));
     const body = await res.json();
@@ -154,5 +173,7 @@ describe('POST /api/generate-image', () => {
     expect(body.saved).toBe(false);
     expect(body.warning).toBe('Image generated but could not be saved to your gallery. Please save it manually.');
     expect(body.creditsRemaining).toBe(2);
+    // The provider call succeeded and cost money — this must NOT be refunded.
+    expect(refundCredit).not.toHaveBeenCalled();
   });
 });
