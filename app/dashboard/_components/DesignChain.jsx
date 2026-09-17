@@ -6,6 +6,8 @@ import { Download, Share2, Sparkles, Loader2, CornerDownRight } from 'lucide-rea
 import Card from '@/app/components/ui/Card';
 import Button from '@/app/components/ui/Button';
 import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
+import GenerationFeedback from '@/app/components/ui/GenerationFeedback';
+import RefinementQualityFeedback from '@/app/components/ui/RefinementQualityFeedback';
 import { track } from '@/lib/analyticsClient';
 
 const SUGGESTED_REFINEMENTS = [
@@ -38,31 +40,44 @@ function DesignChain({ chain, onRefined }) {
   const [refining, setRefining] = useState(false);
   const [error, setError] = useState('');
 
+  const [sharingId, setSharingId] = useState(null);
+  const [shareError, setShareError] = useState(null); // { designId, message } | null
+
   const handleShare = async (design) => {
-    const shareUrl = design.generatedImageUrl || window.location.href;
-    const shareData = {
-      title: `${design.roomType} - ${design.designType} Style Design`,
-      text: `Check out this AI-generated ${design.designType} ${design.roomType} design!`,
-      url: shareUrl,
-    };
+    setSharingId(design.id);
+    setShareError(null);
+    try {
+      // Designs are private by default — this is the explicit opt-in
+      // that makes /share/:id visible for this one design. Idempotent:
+      // safe to call again for an already-public design.
+      const shareRes = await axios.post(`/api/designs/${design.id}/share`);
+      const shareUrl = `${window.location.origin}${shareRes.data.shareUrl}`;
 
-    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.(shareData)) {
-      try {
-        await navigator.share(shareData);
-        track('design_shared', { designId: design.id, method: 'native_share' });
-        return;
-      } catch (err) {
-        if (err.name !== 'AbortError') console.error('Error sharing:', err);
+      const shareData = {
+        title: `${design.roomType} - ${design.designType} Style Design`,
+        text: `Check out this AI-generated ${design.designType} ${design.roomType} design!`,
+        url: shareUrl,
+      };
+
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.(shareData)) {
+        try {
+          await navigator.share(shareData);
+          track('design_shared', { designId: design.id, method: 'native_share' });
+          return;
+        } catch (err) {
+          if (err.name !== 'AbortError') console.error('Error sharing:', err);
+        }
       }
-    }
 
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(shareUrl);
         track('design_shared', { designId: design.id, method: 'copy_link' });
-      } catch (clipboardErr) {
-        console.error('Clipboard copy failed:', clipboardErr);
       }
+    } catch (err) {
+      console.error('Error sharing design:', err);
+      setShareError({ designId: design.id, message: 'Could not create a share link. Please try again.' });
+    } finally {
+      setSharingId(null);
     }
   };
 
@@ -150,11 +165,20 @@ function DesignChain({ chain, onRefined }) {
                   variant="outline"
                   size="small"
                   onClick={() => handleShare(design)}
-                  icon={<Share2 className="h-4 w-4" />}
+                  disabled={sharingId === design.id}
+                  icon={sharingId === design.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
                 >
-                  Share
+                  {sharingId === design.id ? 'Sharing...' : 'Share'}
                 </Button>
               </div>
+              {shareError?.designId === design.id && (
+                <p className="mt-1 text-xs text-red-500">{shareError.message}</p>
+              )}
+              {parent ? (
+                <RefinementQualityFeedback designId={design.id} />
+              ) : (
+                <GenerationFeedback designId={design.id} />
+              )}
             </div>
           );
         })}

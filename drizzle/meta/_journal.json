@@ -43,6 +43,13 @@
       "when": 1789653865845,
       "tag": "0005_add_analytics_events",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789655742492,
+      "tag": "0006_add_design_public_sharing",
+      "breakpoints": true
     }
   ]
 }

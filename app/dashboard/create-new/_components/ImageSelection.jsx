@@ -59,9 +59,12 @@ function ImageSelection({ selectedImage }) {
       transition={{ duration: 0.5 }}
     >
       <Card className="flex flex-col items-center w-full p-6" hover>
-        <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-4 text-center text-md">
+        <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1 text-center text-md">
           1. Select an Image of Your Room
         </label>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 text-center max-w-sm">
+          For the best results, use a well-lit photo taken from a corner that shows most of the room.
+        </p>
         <label
           htmlFor="upload-image"
           className={`w-full ${uploading ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}

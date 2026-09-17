@@ -7,6 +7,7 @@ import {
   timestamp,
   index,
   jsonb,
+  boolean,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -59,6 +60,10 @@ export const designs = pgTable("designs", {
     (): AnyPgColumn => designs.id,
     { onDelete: "set null" }
   ),
+
+  // Private by default. A design only becomes visible at /share/:id
+  // once its owner explicitly shares it — see POST /api/designs/:id/share.
+  isPublic: boolean("isPublic").default(false).notNull(),
 }, (table) => ({
   parentDesignIdIdx: index("designs_parentDesignId_idx").on(table.parentDesignId),
 }));

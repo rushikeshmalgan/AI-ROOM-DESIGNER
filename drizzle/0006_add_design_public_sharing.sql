@@ -1,0 +1,1 @@
+ALTER TABLE "designs" ADD COLUMN "isPublic" boolean DEFAULT false NOT NULL;
