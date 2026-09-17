@@ -21,7 +21,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    exclude: ['node_modules/**', '.next/**'],
+    // e2e/**: Playwright specs, not Vitest — they import @playwright/test's
+    // own test()/expect() and only run via `npm run test:e2e`.
+    exclude: ['node_modules/**', '.next/**', 'e2e/**'],
   },
   resolve: {
     alias: {

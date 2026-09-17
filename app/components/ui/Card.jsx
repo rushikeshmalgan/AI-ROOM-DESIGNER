@@ -9,6 +9,7 @@ export default function Card({
   shadow = 'md',
   hover = false,
   onClick,
+  ...rest
 }) {
   // Padding variants
   const paddingVariants = {
@@ -43,7 +44,7 @@ export default function Card({
     : {};
 
   return (
-    <motion.div className={baseClasses} onClick={onClick} {...motionProps}>
+    <motion.div className={baseClasses} onClick={onClick} {...motionProps} {...rest}>
       {children}
     </motion.div>
   );

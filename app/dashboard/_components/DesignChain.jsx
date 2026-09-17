@@ -101,7 +101,7 @@ function DesignChain({ chain, onRefined }) {
   };
 
   return (
-    <Card className="overflow-hidden" hover shadow="lg" padding="none">
+    <Card className="overflow-hidden" hover shadow="lg" padding="none" data-testid={`design-chain-${root.id}`}>
       <div className="p-3 sm:p-4 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between sm:items-center gap-1">
         <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200">
           {root.roomType} · {root.designType} style
