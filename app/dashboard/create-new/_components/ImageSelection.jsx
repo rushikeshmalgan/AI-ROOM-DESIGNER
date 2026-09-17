@@ -4,6 +4,7 @@ import axios from "axios";
 import { motion } from "framer-motion";
 import Card from "@/app/components/ui/Card";
 import LoadingSpinner from "@/app/components/ui/LoadingSpinner";
+import { resizeImageIfNeeded } from "@/lib/clientImage";
 
 function ImageSelection({ selectedImage }) {
   const [preview, setPreview] = useState(null);
@@ -19,8 +20,13 @@ function ImageSelection({ selectedImage }) {
     setError(null);
 
     try {
+      // Downscale oversized photos before they go over the wire — a
+      // full-resolution phone photo is no more useful to the model and
+      // just costs upload time and Cloudinary bandwidth.
+      const uploadFile = await resizeImageIfNeeded(file);
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", uploadFile);
 
       const response = await axios.post("/api/upload-image", formData);
       selectedImage(response.data.imageUrl);
