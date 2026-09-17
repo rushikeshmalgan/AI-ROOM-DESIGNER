@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import Card from "@/app/components/ui/Card";
@@ -10,10 +10,16 @@ function ImageSelection({ selectedImage }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  // Guards against a stale upload response winning a race: if a user
+  // re-selects a file before the previous upload resolves, only the
+  // response matching the most recent selection is applied.
+  const requestIdRef = useRef(0);
 
   const onFileSelected = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    const requestId = ++requestIdRef.current;
 
     setPreview(URL.createObjectURL(file));
     setUploading(true);
@@ -29,14 +35,17 @@ function ImageSelection({ selectedImage }) {
       formData.append("file", uploadFile);
 
       const response = await axios.post("/api/upload-image", formData);
+      if (requestId !== requestIdRef.current) return; // superseded by a newer selection
+
       selectedImage(response.data.imageUrl);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       console.error("Error uploading image:", err);
       setError(err.response?.data?.error || "Failed to upload image. Please try again.");
       setPreview(null);
       selectedImage(null);
     } finally {
-      setUploading(false);
+      if (requestId === requestIdRef.current) setUploading(false);
     }
   };
 
@@ -51,7 +60,10 @@ function ImageSelection({ selectedImage }) {
         <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-4 text-center text-md">
           1. Select an Image of Your Room
         </label>
-        <label htmlFor="upload-image" className="w-full cursor-pointer">
+        <label
+          htmlFor="upload-image"
+          className={`w-full ${uploading ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
+        >
           <div className="relative flex items-center justify-center w-full h-64 border-2 border-dashed border-purple-300 dark:border-purple-600 rounded-lg bg-purple-50 dark:bg-gray-700 hover:bg-purple-100 dark:hover:bg-gray-600 overflow-hidden transition-colors">
             {uploading ? (
               <LoadingSpinner size="medium" text="Uploading..." />
@@ -71,6 +83,7 @@ function ImageSelection({ selectedImage }) {
           accept="image/jpeg,image/png,image/webp"
           id="upload-image"
           className="hidden"
+          disabled={uploading}
           onChange={onFileSelected}
         />
       </Card>

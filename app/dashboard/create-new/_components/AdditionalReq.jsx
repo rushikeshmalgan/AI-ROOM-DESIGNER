@@ -6,9 +6,8 @@ function AdditionalReq({ additionalRequirementInput }) {   // receive prop
   const [text, setText] = useState("")
 
   const handleChange = (e) => {
-    setText(e.target.value)                  // update local state
-    additionalRequirementInput(e.target.value)  // call parent handler
-    console.log(e.target.value)              // log in console
+    setText(e.target.value)
+    additionalRequirementInput(e.target.value)
   }
 
   return (

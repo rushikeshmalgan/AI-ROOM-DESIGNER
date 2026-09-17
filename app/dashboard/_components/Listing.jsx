@@ -1,50 +1,22 @@
 "use client"
 
 import { useUser } from '@clerk/nextjs'
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import EmptyState from './EmptyState';
-import Link from 'next/link';
 import DesignChain from './DesignChain';
-import axios from 'axios';
-import { Loader2, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Button from '@/app/components/ui/Button';
 import Card from '@/app/components/ui/Card';
 import LoadingSpinner from '@/app/components/ui/LoadingSpinner';
 import { buildDesignChains } from '@/lib/designChains';
 
-function Listing() {
+// Designs are fetched once by the parent Dashboard page and passed down
+// here (and to DesignRecommendations) — this used to fetch /api/designs
+// a second time on every dashboard load.
+function Listing({ designs, loading, error, onRefined }) {
   const { user } = useUser();
-  const [userRoomList, setUserRoomList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  useEffect(() => {
-    const fetchUserDesigns = async () => {
-      if (!user) return;
-      
-      try {
-        setLoading(true);
-        const response = await axios.get('/api/designs');
-        if (response.data && response.data.designs) {
-          setUserRoomList(response.data.designs);
-        }
-      } catch (err) {
-        console.error('Error fetching designs:', err);
-        setError('Failed to load your designs');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchUserDesigns();
-  }, [user]);
-
-  const handleRefined = (newDesign) => {
-    setUserRoomList((prev) => [newDesign, ...prev]);
-  };
-
-  const chains = buildDesignChains(userRoomList);
+  const chains = buildDesignChains(designs);
 
   // Animation variants
   const containerVariants = {
@@ -125,7 +97,7 @@ function Listing() {
               Try Again
             </Button>
           </motion.div>
-        ) : userRoomList.length === 0 ? (
+        ) : designs.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -135,7 +107,7 @@ function Listing() {
                 variants={itemVariants}
                 custom={index}
               >
-                <DesignChain chain={chain} onRefined={handleRefined} />
+                <DesignChain chain={chain} onRefined={onRefined} />
               </motion.div>
             ))}
           </div>
