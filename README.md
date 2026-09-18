@@ -8,8 +8,14 @@ storage, and real Replicate inference (SDXL + Ideogram), not a demo/mock
 environment. `docs/deployment.md` and `docs/deployment-checklist.md` cover
 how it's deployed.
 
-Screenshots/GIF of the actual generation and refinement flow go here once
-captured against the live deployment — not included yet.
+![Landing page](docs/screenshots/landing.png)
+
+The landing page above is a real screenshot of the live deployment (captured
+with Playwright against production, not a mockup). Screenshots of the
+authenticated generation/refinement flow — the actual point of this
+project — aren't included yet: that requires a real signed-in session and
+a completed AI generation, neither of which has been exercised end-to-end
+against production yet. Not fabricating those until they're real.
 
 ## What this is
 
