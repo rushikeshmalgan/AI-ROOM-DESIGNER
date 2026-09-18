@@ -46,108 +46,66 @@ const designStyles = [
   }
 ];
 
+// Get random recommendations
+function getRandomRecommendations(count) {
+  const shuffled = [...designStyles].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+}
+
+const FALLBACK = { personalized: getRandomRecommendations(3), trending: getRandomRecommendations(3) };
+
 function DesignRecommendations({ userDesigns = [] }) {
-  const [recommendations, setRecommendations] = useState([]);
+  // /api/recommendations already returns both personalized and trending
+  // in one response (see app/api/recommendations/route.ts) — the tab
+  // toggle is a pure display switch over data already in memory, not a
+  // new query. This used to re-fetch the same endpoint on every tab
+  // click (and discarded the half of the first response it didn't
+  // immediately use), which was a real duplicate network round-trip on
+  // a purely client-side interaction, not something DB/AI-latency-bound.
+  const [data, setData] = useState(FALLBACK);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('personalized');
-  
-  // Fetch recommendations from API
+
   useEffect(() => {
+    let cancelled = false;
     const fetchRecommendations = async () => {
       setLoading(true);
-      
       try {
-        // Call our new API endpoint
         const response = await fetch('/api/recommendations');
-        const data = await response.json();
-        
-        if (data.success && data.recommendations) {
-          // Use personalized recommendations from the API
-          setRecommendations(data.recommendations.personalized.map(rec => ({
-            name: rec.name,
-            description: rec.description,
-            image: rec.imageUrl || '/modern.jpg',
-            tags: rec.name.split(' ') // Create tags from the name as a fallback
-          })));
-        } else {
-          // Fallback to random recommendations
-          setRecommendations(getRandomRecommendations(3));
-        }
-      } catch (error) {
-        console.error('Error fetching recommendations:', error);
-        setRecommendations(getRandomRecommendations(3));
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchRecommendations();
-  }, [userDesigns]);
-  
-  // Get complementary styles for a given style
-  const getComplementaryStyles = (style) => {
-    // Define complementary style pairings
-    const complementaryMap = {
-      'minimalist': ['Modern', 'Industrial'],
-      'modern': ['Minimalist', 'Industrial'],
-      'industrial': ['Modern', 'Rustic'],
-      'bohemian': ['Rustic', 'Traditional'],
-      'traditional': ['Rustic', 'Bohemian'],
-      'rustic': ['Traditional', 'Industrial']
-    };
-    
-    return complementaryMap[style.toLowerCase()] || ['Modern', 'Minimalist'];
-  };
-  
-  // Get random recommendations
-  const getRandomRecommendations = (count) => {
-    const shuffled = [...designStyles].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, count);
-  };
-  
-  // Switch between personalized and trending tabs
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    setLoading(true);
-    
-    const fetchTabData = async () => {
-      try {
-        // Call our API endpoint
-        const response = await fetch('/api/recommendations');
-        const data = await response.json();
-        
-        if (data.success && data.recommendations) {
-          if (tab === 'trending') {
-            // Show trending styles from API
-            setRecommendations(data.recommendations.trending.map(style => ({
-              name: style.name,
-              description: style.description,
-              image: style.imageUrl || '/placeholder-design.jpg',
-              tags: style.name.split(' ')
-            })));
-          } else {
-            // Show personalized recommendations from API
-            setRecommendations(data.recommendations.personalized.map(rec => ({
+        const json = await response.json();
+        if (cancelled) return;
+
+        if (json.success && json.recommendations) {
+          setData({
+            personalized: json.recommendations.personalized.map((rec) => ({
               name: rec.name,
               description: rec.description,
               image: rec.imageUrl || '/modern.jpg',
-              tags: rec.name.split(' ')
-            })));
-          }
+              tags: rec.name.split(' '),
+            })),
+            trending: json.recommendations.trending.map((style) => ({
+              name: style.name,
+              description: style.description,
+              image: style.imageUrl || '/placeholder-design.jpg',
+              tags: style.name.split(' '),
+            })),
+          });
         } else {
-          // Fallback to random recommendations
-          setRecommendations(getRandomRecommendations(3));
+          setData(FALLBACK);
         }
       } catch (error) {
         console.error('Error fetching recommendations:', error);
-        setRecommendations(getRandomRecommendations(3));
+        if (!cancelled) setData(FALLBACK);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    
-    fetchTabData();
-  };
+
+    fetchRecommendations();
+    return () => { cancelled = true; };
+  }, [userDesigns]);
+
+  const recommendations = data[activeTab];
   
   // Animation variants
   const containerVariants = {
@@ -187,14 +145,14 @@ function DesignRecommendations({ userDesigns = [] }) {
           <Button
             variant={activeTab === 'personalized' ? 'secondary' : 'ghost'}
             size="sm"
-            onClick={() => handleTabChange('personalized')}
+            onClick={() => setActiveTab('personalized')}
           >
             For you
           </Button>
           <Button
             variant={activeTab === 'trending' ? 'secondary' : 'ghost'}
             size="sm"
-            onClick={() => handleTabChange('trending')}
+            onClick={() => setActiveTab('trending')}
           >
             Trending
           </Button>

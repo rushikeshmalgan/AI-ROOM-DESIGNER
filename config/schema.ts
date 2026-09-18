@@ -67,6 +67,13 @@ export const designs = pgTable("designs", {
   isPublic: boolean("isPublic").default(false).notNull(),
 }, (table) => ({
   parentDesignIdIdx: index("designs_parentDesignId_idx").on(table.parentDesignId),
+  // Every read of this table in the app (`/api/designs`, `/api/recommendations`)
+  // filters by userId and orders by createdAt DESC. Without this, both do a
+  // sequential scan across every user's designs, not just the caller's —
+  // there was no index at all on userId despite it being the most-queried
+  // column in the schema. Composite (not two single-column indexes) so the
+  // same index serves the filter and the sort in one pass.
+  userIdCreatedAtIdx: index("designs_userId_createdAt_idx").on(table.userId, table.createdAt),
 }));
 
 // Product analytics — one row per tracked event. Deliberately just a

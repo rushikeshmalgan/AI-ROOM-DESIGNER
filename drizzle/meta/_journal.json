@@ -57,6 +57,13 @@
       "when": 1789661188273,
       "tag": "0007_add_generations_and_credit_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789717395354,
+      "tag": "0008_add_designs_userid_createdat_index",
+      "breakpoints": true
     }
   ]
 }
