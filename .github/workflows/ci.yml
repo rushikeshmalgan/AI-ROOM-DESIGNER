@@ -24,7 +24,27 @@ jobs:
         run: npm test
 
       - name: Production build
+        # This repo's .env is gitignored (correctly — it holds real
+        # secrets) and no repository secrets are configured, so this
+        # runner has none of the app's env vars. Next.js executes
+        # ClerkProvider/middleware during the build's static analysis
+        # pass, and Clerk's SDK throws if it can't find a key at all —
+        # not just an invalid one. These are syntactically-valid-looking
+        # placeholders sufficient for that initialization to succeed;
+        # nothing here needs to (or does) reach a real service, since no
+        # page in this app queries the DB or calls an external API at
+        # build time.
         run: npm run build
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/ci_placeholder
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2ktcGxhY2Vob2xkZXIuY2xlcmsuYWNjb3VudHMuZGV2JA
+          CLERK_SECRET_KEY: sk_test_ci_placeholder_0000000000000000000000000
+          NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ci-placeholder
+          NEXT_PUBLIC_CLOUDINARY_API_KEY: '000000000000000'
+          CLOUDINARY_API_SECRET: ci_placeholder_secret
+          REPLICATE_API_TOKEN: r8_ci_placeholder_0000000000000000000000
+          UPSTASH_REDIS_REST_URL: https://ci-placeholder.upstash.io
+          UPSTASH_REDIS_REST_TOKEN: ci_placeholder_token
 
   e2e:
     name: End-to-end tests
