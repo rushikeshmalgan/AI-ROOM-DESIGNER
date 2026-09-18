@@ -2,9 +2,14 @@
 
 ## Product demo
 
-Not deployed yet — no live URL, no screenshots. `docs/deployment.md` and
-`docs/deployment-checklist.md` cover what deploying will look like; this
-section gets filled in once there's a real one to link, not before.
+Live at **https://ai-room-designer-rho.vercel.app** — deployed on Vercel,
+backed by a real Neon Postgres database, real Clerk auth, real Cloudinary
+storage, and real Replicate inference (SDXL + Ideogram), not a demo/mock
+environment. `docs/deployment.md` and `docs/deployment-checklist.md` cover
+how it's deployed.
+
+Screenshots/GIF of the actual generation and refinement flow go here once
+captured against the live deployment — not included yet.
 
 ## What this is
 
